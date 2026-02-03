@@ -510,7 +510,7 @@
 </head>
 <body>
   <!-- Version -->
-  <div id="version">v2.9.8</div>
+  <div id="version">v2.9.9</div>
 
   <!-- Frame Info Display -->
   <div id="frame-info">Frame: --</div>
@@ -531,7 +531,7 @@
       <span>Debug Console</span>
       <button class="control-btn secondary" id="debug-toggle">Show</button>
     </div>
-    <div class="control-version">Three Line Edit v2.9.8</div>
+    <div class="control-version">Three Line Edit v2.9.9</div>
   </div>
 
   <!-- Debug Console -->
@@ -2044,21 +2044,30 @@
       editListCtx.fillRect(0, 0, width, height);
 
       const frameHeight = height - 4;
-      const frameWidth = Math.round((state.videoWidth / state.videoHeight) * frameHeight);
+      const aspectRatio = state.videoWidth / state.videoHeight;
+      const naturalFrameWidth = Math.round(aspectRatio * frameHeight);
 
-      // Calculate how many frames fit on screen
-      const maxFrames = Math.floor(width / (frameWidth + 2));
-
-      // Calculate total frames in edit list based on frame interval
+      // Calculate total frames in edit list
       const totalEditFrames = Math.ceil(state.editListDuration / state.frameInterval);
+      if (totalEditFrames === 0) return;
 
-      // If more frames than fit, we need to skip some
-      const frameStep = totalEditFrames > maxFrames ? totalEditFrames / maxFrames : 1;
+      // Calculate frame width to fit ALL frames on screen
+      // Each frame needs frameWidth + 1px gap
+      const availableWidth = width - 2; // Leave 1px margin each side
+      let frameWidth = Math.floor(availableWidth / totalEditFrames) - 1;
 
-      let x = 0;
-      let editTime = 0; // Time position in edit list timeline
+      // Clamp frame width between minimum (4px) and natural width
+      const minFrameWidth = 4;
+      frameWidth = Math.max(minFrameWidth, Math.min(frameWidth, naturalFrameWidth));
 
-      for (let i = 0; i < maxFrames && editTime < state.editListDuration; i++) {
+      // Calculate how many frames we can actually show
+      const framesToShow = Math.min(totalEditFrames, Math.floor(availableWidth / (frameWidth + 1)));
+      const frameStep = totalEditFrames / framesToShow;
+
+      let x = 1; // Start with 1px margin
+      let editTime = 0;
+
+      for (let i = 0; i < framesToShow && editTime < state.editListDuration; i++) {
         // Find which clip and source time this edit time corresponds to
         let accumulatedTime = 0;
         let sourceTime = null;
@@ -2066,7 +2075,6 @@
         for (const clip of state.editList) {
           const clipDuration = clip.outTime - clip.inTime;
           if (editTime < accumulatedTime + clipDuration) {
-            // This frame is in this clip
             const offsetInClip = editTime - accumulatedTime;
             sourceTime = clip.inTime + offsetInClip;
             break;
@@ -2079,11 +2087,12 @@
           if (frame && frame.image) {
             editListCtx.drawImage(frame.image, x, 2, frameWidth, frameHeight);
             editListCtx.strokeStyle = '#3b82f6';
+            editListCtx.lineWidth = 0.5;
             editListCtx.strokeRect(x, 2, frameWidth, frameHeight);
           }
         }
 
-        x += frameWidth + 2;
+        x += frameWidth + 1;
         editTime += frameStep * state.frameInterval;
       }
 
