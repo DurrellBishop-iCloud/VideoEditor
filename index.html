@@ -1,0 +1,2158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Three Line Edit</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      touch-action: none;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #1a1a1a;
+      font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+
+    #app {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* File input overlay */
+    #load-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: #1a1a1a;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+      color: #fff;
+    }
+
+    #load-overlay.hidden {
+      display: none;
+    }
+
+    #load-overlay p {
+      color: #888;
+      font-size: 16px;
+    }
+
+    /* Preview area - top half */
+    #preview-area {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #000;
+      position: relative;
+      overflow: hidden;
+    }
+
+    #video {
+      display: none;
+    }
+
+    #preview-canvas {
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+    }
+
+    #play-indicator {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 60px;
+      height: 60px;
+      background: rgba(0,0,0,0.6);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+
+    #play-indicator.show {
+      opacity: 1;
+    }
+
+    #play-indicator::after {
+      content: '';
+      width: 0;
+      height: 0;
+      border-left: 20px solid white;
+      border-top: 12px solid transparent;
+      border-bottom: 12px solid transparent;
+      margin-left: 5px;
+    }
+
+    #play-indicator.playing::after {
+      border: none;
+      width: 20px;
+      height: 24px;
+      background: linear-gradient(to right, white 35%, transparent 35%, transparent 65%, white 65%);
+      margin-left: 0;
+    }
+
+    #time-display {
+      position: absolute;
+      bottom: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0,0,0,0.7);
+      color: #fff;
+      padding: 6px 14px;
+      border-radius: 6px;
+      font-size: 14px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* Edit buttons panel */
+    #edit-panel {
+      position: absolute;
+      right: 10px;
+      top: 50%;
+      transform: translateY(-50%);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      z-index: 10;
+    }
+
+    .edit-btn {
+      width: 50px;
+      height: 50px;
+      border: none;
+      border-radius: 8px;
+      background: rgba(0,0,0,0.6);
+      color: white;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 2px;
+    }
+
+    .edit-btn.active {
+      background: #3b82f6;
+    }
+
+    .edit-btn .icon {
+      font-size: 18px;
+    }
+
+    #marker-display {
+      position: absolute;
+      bottom: 40px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0,0,0,0.7);
+      color: #22c55e;
+      padding: 4px 10px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* Edit list stripe */
+    #edit-list-stripe {
+      height: 60px;
+      background: #1a1a2e;
+      border-bottom: 2px solid #3b82f6;
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 5;
+      display: none;
+    }
+
+    #edit-list-stripe.has-clips {
+      display: block;
+    }
+
+    #edit-list-stripe .stripe-label {
+      display: none;
+    }
+
+    #edit-list-stripe canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+    }
+
+    /* Adjust stripes container when edit list is visible */
+    #stripes-area.has-edit-list #stripes-container {
+      top: 62px;
+    }
+
+    /* Stripes area - bottom half */
+    #stripes-area {
+      flex: 1;
+      background: #0a0a0a;
+      position: relative;
+      overflow: hidden;
+    }
+
+    #stripes-container {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      display: flex;
+      flex-direction: column;
+      transition: transform 0.1s ease-out;
+    }
+
+    /* Center line indicator */
+    #center-line {
+      position: absolute;
+      top: 0;
+      left: 50%;
+      width: 2px;
+      height: 100%;
+      background: #ef4444;
+      z-index: 10;
+      pointer-events: none;
+    }
+
+    #center-line::before,
+    #center-line::after {
+      content: '';
+      position: absolute;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 0;
+      height: 0;
+      border-left: 8px solid transparent;
+      border-right: 8px solid transparent;
+    }
+
+    #center-line::before {
+      top: 0;
+      border-top: 10px solid #ef4444;
+    }
+
+    #center-line::after {
+      bottom: 0;
+      border-bottom: 10px solid #ef4444;
+    }
+
+    .stripe {
+      height: 80px;
+      position: relative;
+      overflow: hidden;
+      border-bottom: 1px solid #333;
+      flex-shrink: 0;
+    }
+
+    .stripe-label {
+      position: absolute;
+      top: 4px;
+      left: 8px;
+      background: rgba(0,0,0,0.7);
+      color: #888;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      z-index: 5;
+      pointer-events: none;
+    }
+
+    .stripe canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      height: 100%;
+    }
+
+    /* Version number */
+    #version {
+      position: fixed;
+      top: 10px;
+      left: 10px;
+      color: #666;
+      font-size: 11px;
+      z-index: 1001;
+      pointer-events: none;
+    }
+
+    /* Frame info display */
+    #frame-info {
+      position: fixed;
+      top: 10px;
+      right: 10px;
+      color: #fff;
+      background: rgba(0,0,0,0.7);
+      padding: 8px 12px;
+      border-radius: 4px;
+      font-size: 14px;
+      font-family: monospace;
+      z-index: 1001;
+      pointer-events: none;
+    }
+
+    /* Control Panel Toggle Button */
+    #control-toggle {
+      position: fixed;
+      top: 10px;
+      left: 50px;
+      width: 36px;
+      height: 36px;
+      background: rgba(0, 0, 0, 0.6);
+      border: none;
+      border-radius: 50%;
+      z-index: 1002;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+    }
+
+    /* Control Panel */
+    #control-panel {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      background: rgba(20, 20, 20, 0.98);
+      z-index: 1001;
+      transform: translateY(-100%);
+      transition: transform 0.3s ease-out;
+      padding: 60px 20px 20px 20px;
+      border-bottom: 1px solid #333;
+    }
+
+    #control-panel.visible {
+      transform: translateY(0);
+    }
+
+    .control-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 14px 0;
+      border-bottom: 1px solid #333;
+      color: #fff;
+      font-size: 16px;
+    }
+
+    .control-item:last-child {
+      border-bottom: none;
+    }
+
+    .control-item label {
+      cursor: pointer;
+    }
+
+    .control-item input[type="file"] {
+      display: none;
+    }
+
+    .control-btn {
+      background: #3b82f6;
+      border: none;
+      color: white;
+      padding: 8px 16px;
+      border-radius: 6px;
+      font-size: 14px;
+      cursor: pointer;
+    }
+
+    .control-btn.secondary {
+      background: #4b5563;
+    }
+
+    .control-version {
+      color: #666;
+      font-size: 12px;
+      text-align: center;
+      padding-top: 15px;
+    }
+
+    /* Debug Console */
+    #debug-console {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 40%;
+      background: rgba(0, 0, 0, 0.95);
+      border-top: 2px solid #22c55e;
+      z-index: 1000;
+      display: none;
+      flex-direction: column;
+      font-family: 'SF Mono', Monaco, 'Courier New', monospace;
+    }
+
+    #debug-console.visible {
+      display: flex;
+    }
+
+    #debug-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 12px;
+      background: #1a1a1a;
+      border-bottom: 1px solid #333;
+    }
+
+    #debug-header span {
+      color: #22c55e;
+      font-size: 12px;
+      font-weight: bold;
+    }
+
+    #debug-buttons {
+      display: flex;
+      gap: 8px;
+    }
+
+    #debug-buttons button {
+      padding: 6px 12px;
+      font-size: 12px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: 600;
+    }
+
+    #copy-btn {
+      background: #3b82f6;
+      color: white;
+    }
+
+    #clear-btn {
+      background: #ef4444;
+      color: white;
+    }
+
+    #debug-log {
+      flex: 1;
+      overflow-y: auto;
+      padding: 8px 12px;
+      font-size: 11px;
+      line-height: 1.4;
+      -webkit-overflow-scrolling: touch;
+      user-select: text;
+      -webkit-user-select: text;
+    }
+
+    .log-entry {
+      padding: 4px 0;
+      border-bottom: 1px solid #222;
+      color: #ddd;
+      word-wrap: break-word;
+    }
+
+    .log-entry.error {
+      color: #ef4444;
+    }
+
+    .log-entry.warn {
+      color: #f59e0b;
+    }
+
+    .log-entry.info {
+      color: #22c55e;
+    }
+
+    .log-time {
+      color: #666;
+      margin-right: 8px;
+    }
+
+    #copy-toast {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: #22c55e;
+      color: white;
+      padding: 12px 24px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      opacity: 0;
+      transition: opacity 0.3s;
+      z-index: 1001;
+    }
+
+    #copy-toast.show {
+      opacity: 1;
+    }
+  </style>
+</head>
+<body>
+  <!-- Version -->
+  <div id="version">v2.9.7</div>
+
+  <!-- Frame Info Display -->
+  <div id="frame-info">Frame: --</div>
+
+  <!-- Control Panel Toggle -->
+  <button id="control-toggle">&#9881;</button>
+
+  <!-- Control Panel -->
+  <div id="control-panel">
+    <div class="control-item">
+      <span>Load Video</span>
+      <label class="control-btn">
+        Choose File
+        <input type="file" id="file-input" accept="video/*">
+      </label>
+    </div>
+    <div class="control-item">
+      <span>Debug Console</span>
+      <button class="control-btn secondary" id="debug-toggle">Show</button>
+    </div>
+    <div class="control-version">Three Line Edit v2.9.7</div>
+  </div>
+
+  <!-- Debug Console -->
+  <div id="debug-console">
+    <div id="debug-header">
+      <span>DEBUG CONSOLE</span>
+      <div id="debug-buttons">
+        <button id="copy-btn">Copy All</button>
+        <button id="clear-btn">Clear</button>
+      </div>
+    </div>
+    <div id="debug-log"></div>
+  </div>
+  <div id="copy-toast">Copied to clipboard!</div>
+
+  <div id="app">
+    <div id="load-overlay">
+      <p>Choose a video file above to begin</p>
+    </div>
+
+    <div id="preview-area">
+      <video id="video" playsinline preload="auto" muted></video>
+      <canvas id="preview-canvas"></canvas>
+      <div id="play-indicator"></div>
+      <div id="time-display">00:00.000 / 00:00.000</div>
+      <div id="marker-display" style="display:none"></div>
+      <div id="hd-progress" style="position:absolute; top:10px; left:10px; background:rgba(0,0,0,0.7); color:#ef4444; padding:4px 8px; border-radius:4px; font-size:12px; font-weight:bold; display:none;">HD: 0%</div>
+      <div id="edit-panel">
+        <button class="edit-btn" id="btn-mark-in">
+          <span class="icon">[</span>
+          <span>IN</span>
+        </button>
+        <button class="edit-btn" id="btn-mark-out">
+          <span class="icon">]</span>
+          <span>OUT</span>
+        </button>
+        <button class="edit-btn" id="btn-keep" style="background:#22c55e;">
+          <span class="icon">+</span>
+          <span>KEEP</span>
+        </button>
+        <button class="edit-btn" id="btn-delete" style="background:#ef4444;">
+          <span class="icon">−</span>
+          <span>DEL</span>
+        </button>
+        <button class="edit-btn" id="btn-move" style="background:#f59e0b;">
+          <span class="icon">→</span>
+          <span>MOVE</span>
+        </button>
+        <button class="edit-btn" id="btn-clear">
+          <span class="icon">×</span>
+          <span>CLR</span>
+        </button>
+      </div>
+    </div>
+
+    <div id="stripes-area">
+      <div id="center-line"></div>
+      <div id="edit-list-stripe">
+        <span class="stripe-label">Edit List</span>
+        <canvas></canvas>
+      </div>
+      <div id="stripes-container">
+        <div class="stripe" id="stripe-0"><span class="stripe-label">Fine</span><canvas></canvas></div>
+        <div class="stripe" id="stripe-1"><span class="stripe-label">Medium</span><canvas></canvas></div>
+        <div class="stripe" id="stripe-2"><span class="stripe-label">Wide</span><canvas></canvas></div>
+        <div class="stripe" id="stripe-3"><span class="stripe-label">Coarse</span><canvas></canvas></div>
+        <div class="stripe" id="stripe-4"><span class="stripe-label">Full</span><canvas></canvas></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ===== CONTROL PANEL & DEBUG CONSOLE =====
+    const controlPanel = document.getElementById('control-panel');
+    const controlToggle = document.getElementById('control-toggle');
+    const debugConsole = document.getElementById('debug-console');
+    const debugToggle = document.getElementById('debug-toggle');
+    const debugLog = document.getElementById('debug-log');
+    const copyBtn = document.getElementById('copy-btn');
+    const clearBtn = document.getElementById('clear-btn');
+    const copyToast = document.getElementById('copy-toast');
+    let logEntries = [];
+
+    // Toggle control panel
+    controlToggle.addEventListener('click', () => {
+      controlPanel.classList.toggle('visible');
+    });
+
+    // Toggle debug console
+    debugToggle.addEventListener('click', () => {
+      const isVisible = debugConsole.classList.toggle('visible');
+      debugToggle.textContent = isVisible ? 'Hide' : 'Show';
+      controlPanel.classList.remove('visible');
+    });
+
+    function getTimestamp() {
+      const now = new Date();
+      return now.toTimeString().split(' ')[0] + '.' + now.getMilliseconds().toString().padStart(3, '0');
+    }
+
+    function addLog(message, type = 'log') {
+      const timestamp = getTimestamp();
+      const entry = { timestamp, message: String(message), type };
+      logEntries.push(entry);
+
+      const div = document.createElement('div');
+      div.className = `log-entry ${type}`;
+      div.innerHTML = `<span class="log-time">${timestamp}</span>${String(message).replace(/</g, '&lt;').replace(/>/g, '&gt;')}`;
+      debugLog.appendChild(div);
+      debugLog.scrollTop = debugLog.scrollHeight;
+    }
+
+    // Capture console methods
+    const originalLog = console.log;
+    const originalError = console.error;
+    const originalWarn = console.warn;
+    const originalInfo = console.info;
+
+    console.log = function(...args) {
+      addLog(args.map(a => typeof a === 'object' ? JSON.stringify(a) : a).join(' '), 'log');
+      originalLog.apply(console, args);
+    };
+
+    console.error = function(...args) {
+      addLog(args.map(a => typeof a === 'object' ? JSON.stringify(a) : a).join(' '), 'error');
+      originalError.apply(console, args);
+    };
+
+    console.warn = function(...args) {
+      addLog(args.map(a => typeof a === 'object' ? JSON.stringify(a) : a).join(' '), 'warn');
+      originalWarn.apply(console, args);
+    };
+
+    console.info = function(...args) {
+      addLog(args.map(a => typeof a === 'object' ? JSON.stringify(a) : a).join(' '), 'info');
+      originalInfo.apply(console, args);
+    };
+
+    // Capture errors
+    window.onerror = function(msg, url, lineNo, columnNo, error) {
+      addLog(`ERROR: ${msg} at ${url}:${lineNo}:${columnNo}`, 'error');
+      return false;
+    };
+
+    window.onunhandledrejection = function(event) {
+      addLog(`UNHANDLED PROMISE: ${event.reason}`, 'error');
+    };
+
+    // Copy button
+    copyBtn.addEventListener('click', async () => {
+      const text = logEntries.map(e => `[${e.timestamp}] [${e.type.toUpperCase()}] ${e.message}`).join('\n');
+      try {
+        await navigator.clipboard.writeText(text);
+        copyToast.classList.add('show');
+        setTimeout(() => copyToast.classList.remove('show'), 1500);
+      } catch (err) {
+        // Fallback for iOS
+        const textarea = document.createElement('textarea');
+        textarea.value = text;
+        textarea.style.position = 'fixed';
+        textarea.style.top = '50%';
+        textarea.style.left = '0';
+        textarea.style.width = '100%';
+        textarea.style.height = '200px';
+        textarea.style.zIndex = '9999';
+        textarea.style.fontSize = '12px';
+        document.body.appendChild(textarea);
+        textarea.focus();
+        textarea.select();
+        addLog('Text area opened - select all and copy manually', 'info');
+      }
+    });
+
+    // Clear button
+    clearBtn.addEventListener('click', () => {
+      debugLog.innerHTML = '';
+      logEntries = [];
+      addLog('Console cleared', 'info');
+    });
+
+    console.info('Debug console initialized');
+    console.info('User Agent: ' + navigator.userAgent);
+
+    // ===== MAIN APP =====
+
+    // State
+    const state = {
+      video: null,
+      duration: 0,
+      currentTime: 0,
+      isPlaying: false,
+      // frames[] is the SINGLE SOURCE OF TRUTH
+      // Each frame: { time, image, deleted, effectiveTime }
+      frames: [],
+      frameInterval: 1/30, // Seconds between cached frames
+      videoWidth: 0,
+      videoHeight: 0,
+      // Edit markers
+      markIn: null,
+      markOut: null,
+      // Edit list - array of {inTime, outTime} clips for the "kept" timeline
+      editList: [],
+      editListDuration: 0,
+      // Effective duration (total minus deleted)
+      effectiveDuration: 0,
+      // HD frame extraction (background)
+      hdFrames: [],              // HD frames being extracted in background
+      hdExtractionProgress: 0,   // 0-100 percentage
+      hdExtractionComplete: false,
+      hdHeight: 240,             // HD frame height (3x thumbnail height of 80)
+      lastInteraction: 0,        // Timestamp of last user interaction
+      extractionComplete: false  // Don't start HD extraction until thumbnails done
+    };
+
+    // Update effective times on all frames and calculate effective duration
+    // Call this after any deletion
+    function updateEffectiveTimes() {
+      let effectiveTime = 0;
+      let deletedCount = 0;
+      for (const frame of state.frames) {
+        if (frame.deleted) {
+          frame.effectiveTime = null;
+          deletedCount++;
+        } else {
+          frame.effectiveTime = effectiveTime;
+          effectiveTime += state.frameInterval;
+        }
+      }
+      state.effectiveDuration = effectiveTime;
+      console.log(`Effective duration: ${state.effectiveDuration.toFixed(2)}s (deleted ${deletedCount} frames)`);
+    }
+
+    // Convert effective time (edited timeline) to source time (original video)
+    // Walk through frames, skipping deleted ones, until we reach effectiveTime
+    function effectiveToSource(effectiveTime) {
+      if (state.frames.length === 0) return effectiveTime;
+
+      let accumulatedEffective = 0;
+      for (const frame of state.frames) {
+        if (frame.deleted) continue;
+
+        if (accumulatedEffective + state.frameInterval > effectiveTime) {
+          // This frame contains our target time
+          const offset = effectiveTime - accumulatedEffective;
+          return frame.time + offset;
+        }
+        accumulatedEffective += state.frameInterval;
+      }
+      // Past the end - return last frame time
+      return state.duration;
+    }
+
+    // Convert source time to effective time
+    // Count how much non-deleted time comes before this source time
+    function sourceToEffective(sourceTime) {
+      if (state.frames.length === 0) return sourceTime;
+
+      let effectiveTime = 0;
+      for (const frame of state.frames) {
+        if (frame.time >= sourceTime) break;
+        if (!frame.deleted) {
+          effectiveTime += state.frameInterval;
+        }
+      }
+      return effectiveTime;
+    }
+
+    // Check if a source time is in a deleted frame
+    function isInDeletedRange(sourceTime) {
+      const frame = getFrameAtTime(sourceTime);
+      return frame ? frame.deleted : false;
+    }
+
+    // Elements
+    const video = document.getElementById('video');
+    const previewCanvas = document.getElementById('preview-canvas');
+    const previewCtx = previewCanvas.getContext('2d');
+    const playIndicator = document.getElementById('play-indicator');
+    const timeDisplay = document.getElementById('time-display');
+    const loadOverlay = document.getElementById('load-overlay');
+    const fileInput = document.getElementById('file-input');
+    const stripesArea = document.getElementById('stripes-area');
+
+    // Stripe configurations (will be set relative to video length)
+    const stripes = [
+      { id: 'stripe-0', baseWindow: 0.3, label: 'Fine', frameScale: 1.0 },
+      { id: 'stripe-1', baseWindow: 2, label: 'Medium', frameScale: 0.5 },
+      { id: 'stripe-2', baseWindow: 8, label: 'Wide', frameScale: 0.3 },
+      { id: 'stripe-3', baseWindow: 30, label: 'Coarse', frameScale: 0.2 },
+      { id: 'stripe-4', baseWindow: 120, label: 'Full', frameScale: 0.15 }
+    ];
+
+    // Initialize stripe data
+    stripes.forEach(stripe => {
+      stripe.element = document.getElementById(stripe.id);
+      stripe.canvas = stripe.element.querySelector('canvas');
+      stripe.ctx = stripe.canvas.getContext('2d');
+      stripe.window = stripe.baseWindow; // Will be adjusted
+    });
+
+    // Format time as MM:SS.mmm
+    function formatTime(seconds) {
+      const mins = Math.floor(seconds / 60);
+      const secs = Math.floor(seconds % 60);
+      const ms = Math.floor((seconds % 1) * 1000);
+      return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}.${ms.toString().padStart(3, '0')}`;
+    }
+
+    // Update time display
+    function updateTimeDisplay() {
+      timeDisplay.textContent = `${formatTime(state.currentTime)} / ${formatTime(state.duration)}`;
+    }
+
+    // Adjust windows relative to video length
+    function adjustWindows() {
+      const dur = state.duration;
+      // Scale windows based on video duration
+      const scale = Math.max(0.5, Math.min(2, dur / 30));
+
+      stripes.forEach(stripe => {
+        if (stripe.id === 'stripe-0') {
+          // FINE STRIPE: Calculate window based on how many full frames fit
+          const stripeWidth = stripe.element.clientWidth;
+          const stripeHeight = stripe.element.clientHeight;
+          const frameHeight = (stripeHeight - 4) * (stripe.frameScale || 1.0);
+          const frameWidth = Math.round((state.videoWidth / state.videoHeight) * frameHeight);
+
+          // How many full frames fit across the screen?
+          const framesAcross = Math.floor(stripeWidth / frameWidth);
+
+          // Set window to show exactly that many frames
+          stripe.window = Math.min(dur, framesAcross * state.frameInterval);
+          console.log(`Fine stripe: ${framesAcross} frames fit (${frameWidth}px each), window=${stripe.window.toFixed(3)}s`);
+        } else {
+          // Other stripes: Scale the base window, but cap at video duration
+          stripe.window = Math.min(dur, stripe.baseWindow * scale);
+        }
+
+        // Update label
+        const label = stripe.element.querySelector('.stripe-label');
+        if (stripe.window >= 60) {
+          label.textContent = `${stripe.label} (${(stripe.window/60).toFixed(1)}m)`;
+        } else {
+          label.textContent = `${stripe.label} (${stripe.window.toFixed(1)}s)`;
+        }
+      });
+    }
+
+    // Extract frames from video
+    async function extractFrames() {
+      console.info('Starting frame extraction (play-through mode)...');
+      state.frames = [];
+      const tempCanvas = document.createElement('canvas');
+      const tempCtx = tempCanvas.getContext('2d');
+
+      // Use smaller thumbnails for memory efficiency
+      const thumbHeight = 80;
+      const thumbWidth = Math.round((state.videoWidth / state.videoHeight) * thumbHeight);
+      tempCanvas.width = thumbWidth;
+      tempCanvas.height = thumbHeight;
+
+      console.log(`Thumb size: ${thumbWidth}x${thumbHeight}`);
+
+      const totalFrames = Math.ceil(state.duration / state.frameInterval);
+      console.log(`Total frames to extract: ${totalFrames} (duration: ${state.duration}s, interval: ${state.frameInterval}s)`);
+
+      return new Promise((resolve, reject) => {
+        let lastCapturedTime = -1;
+        const minFrameGap = state.frameInterval * 0.5; // Minimum gap between captures
+
+        // Check if requestVideoFrameCallback is supported
+        if ('requestVideoFrameCallback' in HTMLVideoElement.prototype) {
+          console.info('Using requestVideoFrameCallback for accurate frame extraction');
+
+          const onVideoFrame = (now, metadata) => {
+            const currentTime = metadata.mediaTime;
+
+            // Only capture if we've moved forward enough
+            if (currentTime - lastCapturedTime >= minFrameGap) {
+              try {
+                tempCtx.drawImage(video, 0, 0, thumbWidth, thumbHeight);
+                state.frames.push({
+                  time: currentTime,
+                  imageData: tempCanvas.toDataURL('image/jpeg', 0.7),
+                  image: null,
+                  hdImage: null,
+                  deleted: false,
+                  effectiveTime: currentTime
+                });
+                lastCapturedTime = currentTime;
+
+                // Show progress
+                const progress = Math.round((currentTime / state.duration) * 100);
+                loadOverlay.querySelector('p').textContent = `Extracting frames: ${progress}% (${state.frames.length} frames)`;
+
+                if (state.frames.length % 30 === 0) {
+                  console.log(`Extracted ${state.frames.length} frames at ${currentTime.toFixed(3)}s`);
+                }
+              } catch (err) {
+                console.error(`Error capturing frame: ${err.message}`);
+              }
+            }
+
+            // Continue if video is still playing
+            if (!video.ended && !video.paused) {
+              video.requestVideoFrameCallback(onVideoFrame);
+            }
+          };
+
+          video.onended = () => {
+            video.pause();
+            console.info(`Frame extraction complete! ${state.frames.length} frames extracted`);
+            loadOverlay.querySelector('p').textContent = `Extracted ${state.frames.length} frames`;
+            resolve();
+          };
+
+          // Start from beginning and play through
+          video.currentTime = 0;
+          video.oncanplay = () => {
+            video.oncanplay = null;
+
+            // Capture first frame before playing (frame 1 at time 0)
+            try {
+              tempCtx.drawImage(video, 0, 0, thumbWidth, thumbHeight);
+              state.frames.push({
+                time: 0,
+                imageData: tempCanvas.toDataURL('image/jpeg', 0.7),
+                image: null,
+                hdImage: null,
+                deleted: false,
+                effectiveTime: 0
+              });
+              lastCapturedTime = 0;
+              console.log('Captured first frame at time 0');
+            } catch (err) {
+              console.error(`Error capturing first frame: ${err.message}`);
+            }
+
+            video.requestVideoFrameCallback(onVideoFrame);
+            video.play();
+            console.log('Playing video for frame extraction...');
+          };
+
+        } else {
+          // Fallback: use timeupdate event (less accurate but widely supported)
+          console.info('Using timeupdate fallback for frame extraction');
+
+          video.ontimeupdate = () => {
+            const currentTime = video.currentTime;
+
+            if (currentTime - lastCapturedTime >= minFrameGap) {
+              try {
+                tempCtx.drawImage(video, 0, 0, thumbWidth, thumbHeight);
+                state.frames.push({
+                  time: currentTime,
+                  imageData: tempCanvas.toDataURL('image/jpeg', 0.7),
+                  image: null,
+                  hdImage: null,
+                  deleted: false,
+                  effectiveTime: currentTime
+                });
+                lastCapturedTime = currentTime;
+
+                const progress = Math.round((currentTime / state.duration) * 100);
+                loadOverlay.querySelector('p').textContent = `Extracting frames: ${progress}% (${state.frames.length} frames)`;
+              } catch (err) {
+                console.error(`Error capturing frame: ${err.message}`);
+              }
+            }
+          };
+
+          video.onended = () => {
+            video.ontimeupdate = null;
+            video.pause();
+            console.info(`Frame extraction complete! ${state.frames.length} frames extracted`);
+            resolve();
+          };
+
+          video.currentTime = 0;
+          video.oncanplay = () => {
+            video.oncanplay = null;
+
+            // Capture first frame before playing (frame 1 at time 0)
+            try {
+              tempCtx.drawImage(video, 0, 0, thumbWidth, thumbHeight);
+              state.frames.push({
+                time: 0,
+                imageData: tempCanvas.toDataURL('image/jpeg', 0.7),
+                image: null,
+                hdImage: null,
+                deleted: false,
+                effectiveTime: 0
+              });
+              lastCapturedTime = 0;
+              console.log('Captured first frame at time 0');
+            } catch (err) {
+              console.error(`Error capturing first frame: ${err.message}`);
+            }
+
+            video.play();
+            console.log('Playing video for frame extraction (timeupdate fallback)...');
+          };
+        }
+
+        video.onerror = (e) => {
+          console.error(`Video error: ${video.error ? video.error.message : 'unknown'}`);
+          reject(new Error('Video error during extraction'));
+        };
+      });
+    }
+
+    // Draw preview frame
+    // PROGRESSIVE LOADING: Use HD frame if available, else small frame
+    const frameInfoEl = document.getElementById('frame-info');
+    function drawPreview() {
+      const sourceTime = effectiveToSource(state.currentTime);
+      const frame = getFrameAtTime(sourceTime);
+
+      if (!frame) {
+        frameInfoEl.textContent = 'Frame: --';
+        return;
+      }
+
+      // Find frame index in array
+      const frameIndex = state.frames.indexOf(frame);
+
+      // Update frame info display
+      frameInfoEl.textContent = `Frame: ${frameIndex + 1} | Time: ${frame.time.toFixed(3)}s`;
+
+      previewCtx.imageSmoothingEnabled = true;
+      previewCtx.imageSmoothingQuality = 'high';
+
+      // Draw frame image (will be HD after background extraction completes)
+      if (frame.image) {
+        previewCtx.drawImage(frame.image, 0, 0, previewCanvas.width, previewCanvas.height);
+      }
+    }
+
+    // Track user interaction for idle detection
+    function userInteracted() {
+      state.lastInteraction = Date.now();
+    }
+
+    // HD Progress indicator element
+    const hdProgressEl = document.getElementById('hd-progress');
+
+    // Background HD frame extraction using play-through (same method as thumbnails)
+    async function extractHDFramesInBackground() {
+      if (!state.extractionComplete) return;
+
+      console.info('Starting HD frame extraction in background...');
+      state.hdFrames = [];
+      state.hdExtractionProgress = 0;
+      state.hdExtractionComplete = false;
+
+      // Show progress indicator
+      hdProgressEl.style.display = 'block';
+      hdProgressEl.textContent = 'HD: 0%';
+
+      const hdHeight = state.hdHeight;
+      const hdWidth = Math.round((state.videoWidth / state.videoHeight) * hdHeight);
+
+      const tempCanvas = document.createElement('canvas');
+      tempCanvas.width = hdWidth;
+      tempCanvas.height = hdHeight;
+      const tempCtx = tempCanvas.getContext('2d');
+
+      // Clone the video element to avoid interfering with user playback
+      const hdVideo = document.createElement('video');
+      hdVideo.muted = true;
+      hdVideo.playsInline = true;
+      hdVideo.preload = 'auto';
+      hdVideo.src = video.src; // Use same source as main video
+      console.log('HD: Created video element with src:', hdVideo.src);
+
+      return new Promise((resolve) => {
+        let lastCapturedTime = -1;
+        const minFrameGap = state.frameInterval * 0.5;
+
+        // Wait for video to be ready before starting extraction
+        hdVideo.onloadedmetadata = () => {
+          console.log('HD: Video metadata loaded, duration:', hdVideo.duration);
+        };
+
+        hdVideo.onerror = (e) => {
+          console.error('HD: Video load error:', e);
+          hdProgressEl.textContent = 'HD: Error';
+          hdProgressEl.style.color = '#ff0000';
+          resolve();
+        };
+
+        if ('requestVideoFrameCallback' in HTMLVideoElement.prototype) {
+          console.info('HD: Using requestVideoFrameCallback for extraction');
+
+          const onVideoFrame = (now, metadata) => {
+            const currentTime = metadata.mediaTime;
+
+            if (currentTime - lastCapturedTime >= minFrameGap) {
+              try {
+                tempCtx.drawImage(hdVideo, 0, 0, hdWidth, hdHeight);
+                state.hdFrames.push({
+                  time: currentTime,
+                  imageData: tempCanvas.toDataURL('image/jpeg', 0.8),
+                  image: null,
+                  deleted: false,
+                  effectiveTime: currentTime
+                });
+                lastCapturedTime = currentTime;
+
+                // Update progress
+                state.hdExtractionProgress = Math.round((currentTime / state.duration) * 100);
+                hdProgressEl.textContent = 'HD: ' + state.hdExtractionProgress + '%';
+
+                if (state.hdFrames.length % 30 === 0) {
+                  console.log(`HD: Extracted ${state.hdFrames.length} frames at ${currentTime.toFixed(3)}s`);
+                }
+              } catch (err) {
+                console.error(`HD: Error capturing frame: ${err.message}`);
+              }
+            }
+
+            if (!hdVideo.ended && !hdVideo.paused) {
+              hdVideo.requestVideoFrameCallback(onVideoFrame);
+            }
+          };
+
+          hdVideo.onended = () => {
+            hdVideo.pause();
+            console.info(`HD extraction complete! ${state.hdFrames.length} frames extracted`);
+            hdProgressEl.textContent = 'HD: Loading...';
+
+            // Load HD frame images from imageData
+            loadHDFrameImages().then(() => {
+              state.hdExtractionComplete = true;
+              swapToHDFrames();
+              resolve();
+            });
+          };
+
+          hdVideo.oncanplay = () => {
+            hdVideo.oncanplay = null;
+            console.log('HD: Video ready, starting extraction...');
+
+            // Ensure we're at the start
+            hdVideo.currentTime = 0;
+
+            // Capture first frame before playing
+            try {
+              tempCtx.drawImage(hdVideo, 0, 0, hdWidth, hdHeight);
+              state.hdFrames.push({
+                time: 0,
+                imageData: tempCanvas.toDataURL('image/jpeg', 0.8),
+                image: null,
+                deleted: false,
+                effectiveTime: 0
+              });
+              lastCapturedTime = 0;
+              console.log('HD: Captured first frame at time 0');
+            } catch (err) {
+              console.error(`HD: Error capturing first frame: ${err.message}`);
+            }
+
+            hdVideo.requestVideoFrameCallback(onVideoFrame);
+            hdVideo.play().catch(err => {
+              console.error('HD: Play failed:', err);
+              hdProgressEl.textContent = 'HD: Play failed';
+            });
+            console.log('HD: Playing video for extraction...');
+          };
+
+          // Start loading the video
+          hdVideo.load();
+
+        } else {
+          // Fallback: use timeupdate event
+          console.info('Using timeupdate fallback for HD extraction');
+
+          hdVideo.ontimeupdate = () => {
+            const currentTime = hdVideo.currentTime;
+
+            if (currentTime - lastCapturedTime >= minFrameGap) {
+              try {
+                tempCtx.drawImage(hdVideo, 0, 0, hdWidth, hdHeight);
+                state.hdFrames.push({
+                  time: currentTime,
+                  imageData: tempCanvas.toDataURL('image/jpeg', 0.8),
+                  image: null,
+                  deleted: false,
+                  effectiveTime: currentTime
+                });
+                lastCapturedTime = currentTime;
+
+                state.hdExtractionProgress = Math.round((currentTime / state.duration) * 100);
+                hdProgressEl.textContent = 'HD: ' + state.hdExtractionProgress + '%';
+              } catch (err) {
+                console.error(`HD: Error capturing frame: ${err.message}`);
+              }
+            }
+          };
+
+          hdVideo.onended = () => {
+            hdVideo.ontimeupdate = null;
+            hdVideo.pause();
+            console.info(`HD extraction complete! ${state.hdFrames.length} frames`);
+            hdProgressEl.textContent = 'HD: Loading...';
+
+            loadHDFrameImages().then(() => {
+              state.hdExtractionComplete = true;
+              swapToHDFrames();
+              resolve();
+            });
+          };
+
+          hdVideo.oncanplay = () => {
+            hdVideo.oncanplay = null;
+            console.log('HD: Video ready (fallback mode)');
+            hdVideo.currentTime = 0;
+            hdVideo.play().catch(err => {
+              console.error('HD: Play failed:', err);
+            });
+          };
+
+          // Start loading the video
+          hdVideo.load();
+        }
+      });
+    }
+
+    // Load HD frame images from imageData strings
+    async function loadHDFrameImages() {
+      console.info(`Loading ${state.hdFrames.length} HD images...`);
+      let loadedCount = 0;
+
+      await Promise.all(state.hdFrames.map(frame => {
+        return new Promise(resolve => {
+          const img = new Image();
+          img.onload = () => {
+            frame.image = img;
+            delete frame.imageData; // Free the data URL string
+            loadedCount++;
+            if (loadedCount % 50 === 0) {
+              console.log(`HD: Loaded ${loadedCount}/${state.hdFrames.length} images`);
+            }
+            resolve();
+          };
+          img.onerror = () => {
+            console.warn(`HD: Failed to load image for time ${frame.time}`);
+            resolve();
+          };
+          img.src = frame.imageData;
+        });
+      }));
+
+      console.info('All HD images loaded');
+    }
+
+    // Swap thumbnail frames with HD frames, preserving edit state
+    function swapToHDFrames() {
+      if (!state.hdExtractionComplete) return;
+      if (state.hdFrames.length === 0) return;
+
+      console.info('Swapping to HD frames...');
+
+      // Build lookup of old frame states by time (millisecond precision)
+      const oldFrameStates = new Map();
+      for (const frame of state.frames) {
+        oldFrameStates.set(frame.time.toFixed(3), {
+          deleted: frame.deleted,
+          effectiveTime: frame.effectiveTime
+        });
+      }
+
+      // Apply old states to HD frames
+      let matchedCount = 0;
+      for (const hdFrame of state.hdFrames) {
+        const key = hdFrame.time.toFixed(3);
+        const oldState = oldFrameStates.get(key);
+        if (oldState) {
+          hdFrame.deleted = oldState.deleted;
+          hdFrame.effectiveTime = oldState.effectiveTime;
+          matchedCount++;
+        } else {
+          // No exact match - keep default state
+          hdFrame.deleted = false;
+          hdFrame.effectiveTime = hdFrame.time;
+        }
+      }
+
+      console.log(`Matched ${matchedCount}/${state.hdFrames.length} frames to original states`);
+
+      // Preserve markers (they use frame.time which is the same)
+      // state.markIn and state.markOut remain valid
+
+      // Atomic swap
+      const oldFrames = state.frames;
+      state.frames = state.hdFrames;
+      state.hdFrames = [];
+
+      // Free old frame memory
+      for (const frame of oldFrames) {
+        frame.image = null;
+      }
+
+      // Recalculate effective times to be safe
+      updateEffectiveTimes();
+
+      // Hide progress indicator
+      hdProgressEl.style.display = 'none';
+
+      console.info('HD swap complete!');
+      drawPreview();
+      drawAllStripes();
+    }
+
+    // Find closest non-deleted cached frame
+    function getFrameAtTime(time) {
+      if (state.frames.length === 0) return null;
+
+      let closest = null;
+      let minDiff = Infinity;
+
+      for (const frame of state.frames) {
+        if (frame.deleted) continue; // Skip deleted frames
+
+        const diff = Math.abs(time - frame.time);
+        if (diff < minDiff) {
+          minDiff = diff;
+          closest = frame;
+        }
+        if (frame.time > time && closest) break; // Frames are sorted, and we have a match
+      }
+
+      return closest;
+    }
+
+    // Draw a stripe
+    function drawStripe(stripe) {
+      const ctx = stripe.ctx;
+      const timeWindow = stripe.window;
+      const frameScale = stripe.frameScale || 1.0;
+      const isFineStripe = stripe.id === 'stripe-0';
+
+      // Use element dimensions (not canvas dimensions which are 2x for retina)
+      const width = stripe.element.clientWidth;
+      const height = stripe.element.clientHeight;
+
+      ctx.fillStyle = '#0a0a0a';
+      ctx.fillRect(0, 0, width, height);
+
+      // Calculate frame dimensions - scale affects size
+      const frameHeight = (height - 4) * frameScale;
+      const frameWidth = Math.round((state.videoWidth / state.videoHeight) * frameHeight);
+      const frameY = (height - frameHeight) / 2; // Center vertically
+
+      // Use effective duration if we have deletions
+      const duration = hasDeletedFrames() ? state.effectiveDuration : state.duration;
+
+      // Time per pixel (in effective time)
+      const timePerPixel = timeWindow / width;
+
+      // Center of the stripe = current effective time
+      const centerX = width / 2;
+
+      if (isFineStripe) {
+        // FINE STRIPE: Find center frame same way as preview, then draw neighbors
+        // This guarantees the preview frame appears in the Fine stripe
+
+        // Find the center frame (same logic as drawPreview)
+        const centerSourceTime = effectiveToSource(state.currentTime);
+        const centerFrame = getFrameAtTime(centerSourceTime);
+        if (!centerFrame || centerFrame.deleted) return;
+
+        // Find center frame's index in the frames array
+        const centerIndex = state.frames.indexOf(centerFrame);
+        if (centerIndex === -1) return;
+
+        // How many frames to show on each side?
+        const framesOnEachSide = Math.ceil(width / frameWidth / 2) + 1;
+
+        // Draw center frame (red line at left edge of current frame)
+        if (centerFrame.image) {
+          const x = centerX;
+          ctx.drawImage(centerFrame.image, x, frameY, frameWidth, frameHeight);
+          ctx.strokeStyle = '#333';
+          ctx.strokeRect(x, frameY, frameWidth, frameHeight);
+        }
+
+        // Draw frames to the LEFT of center (walking backwards, skipping deleted)
+        let leftPos = 1;
+        for (let i = centerIndex - 1; i >= 0 && leftPos <= framesOnEachSide; i--) {
+          const frame = state.frames[i];
+          if (frame.deleted || !frame.image) continue;
+          const x = centerX - (leftPos * frameWidth);
+          ctx.drawImage(frame.image, x, frameY, frameWidth, frameHeight);
+          ctx.strokeStyle = '#333';
+          ctx.strokeRect(x, frameY, frameWidth, frameHeight);
+          leftPos++;
+        }
+
+        // Draw frames to the RIGHT of center (walking forwards, skipping deleted)
+        let rightPos = 1;
+        for (let i = centerIndex + 1; i < state.frames.length && rightPos <= framesOnEachSide; i++) {
+          const frame = state.frames[i];
+          if (frame.deleted || !frame.image) continue;
+          const x = centerX + (rightPos * frameWidth);
+          ctx.drawImage(frame.image, x, frameY, frameWidth, frameHeight);
+          ctx.strokeStyle = '#333';
+          ctx.strokeRect(x, frameY, frameWidth, frameHeight);
+          rightPos++;
+        }
+      } else {
+        // OTHER STRIPES: Sample frames at pixel intervals (can skip for wider views)
+        const framesNeeded = Math.ceil(width / frameWidth) + 4;
+
+        for (let i = -Math.ceil(framesNeeded / 2); i <= Math.ceil(framesNeeded / 2); i++) {
+          const pixelOffset = i * frameWidth;
+          const effectiveTime = state.currentTime + (pixelOffset * timePerPixel);
+
+          if (effectiveTime < 0 || effectiveTime > duration) continue;
+
+          const sourceTime = effectiveToSource(effectiveTime);
+          const frame = getFrameAtTime(sourceTime);
+          if (!frame || !frame.image) continue;
+
+          const timeDiff = effectiveTime - state.currentTime;
+          const x = centerX + (timeDiff / timePerPixel) - (frameWidth / 2);
+
+          ctx.drawImage(frame.image, x, frameY, frameWidth, frameHeight);
+          ctx.strokeStyle = '#333';
+          ctx.strokeRect(x, frameY, frameWidth, frameHeight);
+        }
+      }
+    }
+
+    // Draw all stripes
+    function drawAllStripes() {
+      stripes.forEach(drawStripe);
+    }
+
+    // Check if any frames are deleted
+    function hasDeletedFrames() {
+      return state.frames.some(f => f.deleted);
+    }
+
+    // Seek video to time
+    // Seek to effective time (edited timeline)
+    // PURE FRAME MODE: Seek using frame data only, no video element
+    function seekTo(effectiveTime) {
+      const duration = hasDeletedFrames() ? state.effectiveDuration : state.duration;
+      state.currentTime = Math.max(0, Math.min(duration, effectiveTime));
+
+      // No video seeking - just update state and draw cached frame
+      updateTimeDisplay();
+      drawAllStripes();
+      drawPreview();
+    }
+
+    // PURE FRAME MODE: Video element only used for frame extraction
+    // No need for video event monitoring - preview uses cached frames
+
+    video.addEventListener('error', () => {
+      console.error(`VIDEO ERROR: ${video.error ? video.error.message : 'unknown'}`);
+    });
+
+    // PURE FRAME MODE: No iOS keepalive needed - video only used for extraction
+    let videoUrl = null;
+
+    // Animation loop
+    // PURE FRAME MODE: Animation uses frame data, not video element
+    let lastFrameTime = 0;
+
+    function animate(timestamp) {
+      if (state.isPlaying) {
+        if (lastFrameTime === 0) lastFrameTime = timestamp;
+
+        // Calculate elapsed time and advance current time
+        const elapsed = (timestamp - lastFrameTime) / 1000; // Convert to seconds
+        lastFrameTime = timestamp;
+
+        const duration = hasDeletedFrames() ? state.effectiveDuration : state.duration;
+        state.currentTime += elapsed;
+
+        // Stop at end
+        if (state.currentTime >= duration) {
+          state.currentTime = duration;
+          state.isPlaying = false;
+          lastFrameTime = 0;
+          console.info('Playback ended');
+        }
+
+        drawPreview();
+        updateTimeDisplay();
+        drawAllStripes();
+      }
+      requestAnimationFrame(animate);
+    }
+
+    // Handle video load
+    async function loadVideo(file) {
+      // Close control panel
+      controlPanel.classList.remove('visible');
+
+      console.info(`Loading video: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)`);
+      console.log(`File type: ${file.type}`);
+
+      // Store URL globally for potential recovery
+      videoUrl = URL.createObjectURL(file);
+      video.src = videoUrl;
+
+      // Force load on iOS
+      video.load();
+
+      loadOverlay.querySelector('p').textContent = 'Loading video...';
+
+      console.log('Waiting for video metadata...');
+      await new Promise((resolve, reject) => {
+        video.onloadedmetadata = () => {
+          console.info('Video metadata loaded');
+          resolve();
+        };
+        video.onerror = () => {
+          console.error('Failed to load video metadata');
+          reject(new Error('Video load failed'));
+        };
+        setTimeout(() => {
+          console.error('Metadata load timeout after 10s');
+          console.log(`Video readyState: ${video.readyState}`);
+        }, 10000);
+      });
+
+      state.duration = video.duration;
+      state.effectiveDuration = video.duration; // Initially same as duration
+      state.editList = []; // Clear edit list
+      state.editListDuration = 0;
+
+      // Clear frames from previous video
+      state.frames = [];
+      state.hdFrames = [];
+      state.hdExtractionComplete = false;
+      state.extractionComplete = false;
+      state.videoWidth = video.videoWidth;
+      state.videoHeight = video.videoHeight;
+
+      console.info(`Video info: ${state.videoWidth}x${state.videoHeight}, duration: ${state.duration.toFixed(2)}s`);
+      console.log(`Video readyState: ${video.readyState}`);
+
+      // Set up preview canvas
+      previewCanvas.width = state.videoWidth;
+      previewCanvas.height = state.videoHeight;
+      console.log('Preview canvas configured');
+
+      // Adjust time windows
+      adjustWindows();
+      console.log(`Time windows: Fine=${stripes[0].window}s, Medium=${stripes[1].window}s, Coarse=${stripes[2].window}s`);
+
+      // Set up stripe canvases
+      stripes.forEach((stripe, i) => {
+        stripe.canvas.width = stripe.element.clientWidth * 2; // 2x for retina
+        stripe.canvas.height = stripe.element.clientHeight * 2;
+        stripe.canvas.style.width = stripe.element.clientWidth + 'px';
+        stripe.canvas.style.height = stripe.element.clientHeight + 'px';
+        stripe.ctx.scale(2, 2);
+      });
+      console.log('Stripe canvases configured');
+
+      // Extract frames
+      console.info('Beginning frame extraction...');
+      try {
+        await extractFrames();
+      } catch (err) {
+        console.error(`Frame extraction failed: ${err.message}`);
+        return;
+      }
+
+      // Load frame images
+      console.info(`Loading ${state.frames.length} thumbnail images...`);
+      loadOverlay.querySelector('p').textContent = 'Loading thumbnails...';
+      let loadedCount = 0;
+      await Promise.all(state.frames.map(frame => {
+        return new Promise(resolve => {
+          const img = new Image();
+          img.onload = () => {
+            frame.image = img;
+            delete frame.imageData; // Free the data URL string (~5-8 KB per frame)
+            loadedCount++;
+            if (loadedCount % 50 === 0) {
+              console.log(`Loaded ${loadedCount}/${state.frames.length} thumbnails`);
+            }
+            resolve();
+          };
+          img.onerror = () => {
+            console.warn(`Failed to load thumbnail for time ${frame.time}`);
+            resolve();
+          };
+          img.src = frame.imageData;
+        });
+      }));
+      console.info('All thumbnails loaded');
+      updateEffectiveTimes(); // Initialize effective times for all frames
+      state.extractionComplete = true; // Now safe to start HD loading
+
+      // Initial state
+      console.log('Seeking to start...');
+      video.currentTime = 0;
+      state.currentTime = 0;
+
+      await new Promise(resolve => {
+        const onInitialSeek = () => {
+          video.removeEventListener('seeked', onInitialSeek);
+          resolve();
+        };
+        video.addEventListener('seeked', onInitialSeek);
+      });
+
+      // Clear any lingering onseeked handler from extraction
+      video.onseeked = null;
+
+      console.log('Drawing initial state...');
+      drawPreview();
+      updateTimeDisplay();
+      drawAllStripes();
+
+      loadOverlay.classList.add('hidden');
+      console.info('Video editor ready!');
+      animate();
+
+      // Start HD extraction in background after 1 second delay
+      // Only starts after state.extractionComplete is true (thumbnails fully loaded)
+      setTimeout(() => {
+        if (state.extractionComplete) {
+          extractHDFramesInBackground();
+        }
+      }, 1000);
+    }
+
+    // Touch handling for stripes
+    // Vertical scroll state for stripes container
+    const stripesContainer = document.getElementById('stripes-container');
+    let containerScrollY = 0;
+    const stripeHeight = 80;
+    const visibleStripes = 3;
+
+    function updateContainerScroll() {
+      const maxScroll = (stripes.length - visibleStripes) * stripeHeight;
+      containerScrollY = Math.max(0, Math.min(maxScroll, containerScrollY));
+      stripesContainer.style.transform = `translateY(${-containerScrollY}px)`;
+    }
+
+    function setupStripeTouch(stripe) {
+      let startX = 0;
+      let startY = 0;
+      let startTime = 0;
+      let startScrollY = 0;
+      let isDragging = false;
+      let direction = null; // 'horizontal' or 'vertical'
+
+      const handleStart = (e) => {
+        e.preventDefault();
+        userInteracted();
+
+        const touch = e.touches ? e.touches[0] : e;
+        startX = touch.clientX;
+        startY = touch.clientY;
+        startTime = state.currentTime;
+        startScrollY = containerScrollY;
+        isDragging = true;
+        direction = null;
+
+        if (state.isPlaying) {
+          video.pause();
+          state.isPlaying = false;
+          playIndicator.classList.remove('playing');
+        }
+      };
+
+      const handleMove = (e) => {
+        if (!isDragging) return;
+        e.preventDefault();
+        userInteracted();
+
+        const touch = e.touches ? e.touches[0] : e;
+        const deltaX = touch.clientX - startX;
+        const deltaY = touch.clientY - startY;
+
+        // Determine direction on first significant movement
+        if (!direction) {
+          if (Math.abs(deltaX) > 10 || Math.abs(deltaY) > 10) {
+            direction = Math.abs(deltaX) > Math.abs(deltaY) ? 'horizontal' : 'vertical';
+          } else {
+            return;
+          }
+        }
+
+        if (direction === 'horizontal') {
+          // Scrub timeline
+          const pixelsPerSecond = stripe.element.clientWidth / stripe.window;
+          const timeDelta = -deltaX / pixelsPerSecond;
+          seekTo(startTime + timeDelta);
+        } else {
+          // Scroll stripes vertically
+          containerScrollY = startScrollY - deltaY;
+          updateContainerScroll();
+        }
+      };
+
+      const handleEnd = () => {
+        isDragging = false;
+        direction = null;
+        userInteracted();
+      };
+
+      stripe.element.addEventListener('touchstart', handleStart, { passive: false });
+      stripe.element.addEventListener('touchmove', handleMove, { passive: false });
+      stripe.element.addEventListener('touchend', handleEnd);
+      stripe.element.addEventListener('touchcancel', handleEnd);
+
+      // Mouse support for desktop testing
+      stripe.element.addEventListener('mousedown', handleStart);
+      window.addEventListener('mousemove', handleMove);
+      window.addEventListener('mouseup', handleEnd);
+    }
+
+    // Preview tap to play/pause
+    // PURE FRAME MODE: Play/pause uses frame cycling, not video element
+    previewCanvas.addEventListener('click', () => {
+      if (state.duration === 0) return;
+
+      if (state.isPlaying) {
+        // Pause
+        state.isPlaying = false;
+        lastFrameTime = 0;
+        playIndicator.classList.remove('playing');
+      } else {
+        // Play
+        state.isPlaying = true;
+        lastFrameTime = 0; // Reset timer
+        playIndicator.classList.add('playing');
+      }
+
+      playIndicator.classList.add('show');
+      setTimeout(() => playIndicator.classList.remove('show'), 500);
+    });
+
+    // Video ended event not needed in pure frame mode
+    video.addEventListener('ended', () => {
+      state.isPlaying = false;
+      playIndicator.classList.remove('playing');
+    });
+
+    // App ready flag
+    let appReady = false;
+
+    // File input - with ready check
+    fileInput.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (file) {
+        if (!appReady) {
+          console.warn('App not ready, waiting...');
+          setTimeout(() => {
+            if (file) loadVideo(file);
+          }, 100);
+        } else {
+          loadVideo(file);
+        }
+      }
+    });
+
+    // Initialize app when DOM is fully ready
+    function initApp() {
+      console.info('App initializing...');
+
+      // Small delay to ensure all elements are rendered
+      setTimeout(() => {
+        appReady = true;
+        console.info('App ready!');
+
+        // Auto-show control panel so user can load a video
+        controlPanel.classList.add('visible');
+      }, 200);
+    }
+
+    // Start initialization
+    if (document.readyState === 'complete') {
+      initApp();
+    } else {
+      window.addEventListener('load', initApp);
+    }
+
+    // Handle resize
+    window.addEventListener('resize', () => {
+      if (state.duration === 0) return;
+
+      stripes.forEach(stripe => {
+        stripe.canvas.width = stripe.element.clientWidth * 2;
+        stripe.canvas.height = stripe.element.clientHeight * 2;
+        stripe.canvas.style.width = stripe.element.clientWidth + 'px';
+        stripe.canvas.style.height = stripe.element.clientHeight + 'px';
+        stripe.ctx.setTransform(1, 0, 0, 1, 0, 0);
+        stripe.ctx.scale(2, 2);
+      });
+
+      drawAllStripes();
+    });
+
+    // Initialize touch handling
+    stripes.forEach(setupStripeTouch);
+
+    // ===== EDIT FUNCTIONALITY =====
+    const btnMarkIn = document.getElementById('btn-mark-in');
+    const btnMarkOut = document.getElementById('btn-mark-out');
+    const btnKeep = document.getElementById('btn-keep');
+    const btnDelete = document.getElementById('btn-delete');
+    const btnMove = document.getElementById('btn-move');
+    const btnClear = document.getElementById('btn-clear');
+    const markerDisplay = document.getElementById('marker-display');
+    const editListStripe = document.getElementById('edit-list-stripe');
+    const editListCanvas = editListStripe.querySelector('canvas');
+    const editListCtx = editListCanvas.getContext('2d');
+
+    // Get current selection (range or single frame)
+    // Get current selection in SOURCE time
+    function getSelection() {
+      let inTime, outTime;
+      if (state.markIn !== null && state.markOut !== null) {
+        // Markers are already in source time
+        inTime = state.markIn;
+        outTime = state.markOut;
+      } else if (state.markIn !== null) {
+        inTime = state.markIn;
+        outTime = state.markIn + state.frameInterval;
+      } else if (state.markOut !== null) {
+        inTime = state.markOut;
+        outTime = state.markOut + state.frameInterval;
+      } else {
+        // No markers - use the actual displayed frame's time
+        const sourceTime = effectiveToSource(state.currentTime);
+        const frame = getFrameAtTime(sourceTime);
+        if (frame) {
+          // Use the actual frame time, not the calculated time
+          inTime = frame.time;
+          outTime = frame.time + state.frameInterval;
+        } else {
+          inTime = sourceTime;
+          outTime = sourceTime + state.frameInterval;
+        }
+      }
+      return { inTime, outTime };
+    }
+
+    function updateMarkerDisplay() {
+      if (state.markIn === null && state.markOut === null) {
+        markerDisplay.style.display = 'none';
+        btnMarkIn.classList.remove('active');
+        btnMarkOut.classList.remove('active');
+      } else {
+        markerDisplay.style.display = 'block';
+        let text = '';
+        if (state.markIn !== null) {
+          text += `IN: ${formatTime(state.markIn)}`;
+          btnMarkIn.classList.add('active');
+        } else {
+          btnMarkIn.classList.remove('active');
+        }
+        if (state.markOut !== null) {
+          if (text) text += ' | ';
+          text += `OUT: ${formatTime(state.markOut)}`;
+          btnMarkOut.classList.add('active');
+        } else {
+          btnMarkOut.classList.remove('active');
+        }
+        if (state.markIn !== null && state.markOut !== null) {
+          const duration = Math.abs(state.markOut - state.markIn);
+          text += ` (${duration.toFixed(2)}s)`;
+        }
+        markerDisplay.textContent = text;
+      }
+      drawAllStripes();
+    }
+
+    // Mark In button - use actual displayed frame time
+    btnMarkIn.addEventListener('click', () => {
+      const sourceTime = effectiveToSource(state.currentTime);
+      const frame = getFrameAtTime(sourceTime);
+      state.markIn = frame ? frame.time : sourceTime;
+      if (state.markOut !== null && state.markOut < state.markIn) {
+        [state.markIn, state.markOut] = [state.markOut, state.markIn];
+      }
+      console.info(`Mark IN set: ${formatTime(state.markIn)} (frame time)`);
+      updateMarkerDisplay();
+    });
+
+    // Mark Out button - use actual displayed frame time
+    btnMarkOut.addEventListener('click', () => {
+      const sourceTime = effectiveToSource(state.currentTime);
+      const frame = getFrameAtTime(sourceTime);
+      state.markOut = frame ? frame.time : sourceTime;
+      if (state.markIn !== null && state.markIn > state.markOut) {
+        [state.markIn, state.markOut] = [state.markOut, state.markIn];
+      }
+      console.info(`Mark OUT set: ${formatTime(state.markOut)} (frame time)`);
+      updateMarkerDisplay();
+    });
+
+    // Clear markers button
+    btnClear.addEventListener('click', () => {
+      state.markIn = null;
+      state.markOut = null;
+      console.info('Markers cleared');
+      updateMarkerDisplay();
+    });
+
+    // KEEP - add to edit list (doesn't remove from source)
+    btnKeep.addEventListener('click', () => {
+      const { inTime, outTime } = getSelection();
+      state.editList.push({ inTime, outTime });
+      state.editListDuration = state.editList.reduce((sum, clip) => sum + (clip.outTime - clip.inTime), 0);
+      console.info(`KEEP: ${formatTime(inTime)} - ${formatTime(outTime)}`);
+      console.info(`Edit list: ${state.editList.length} clips, ${state.editListDuration.toFixed(2)}s`);
+      state.markIn = null;
+      state.markOut = null;
+      updateMarkerDisplay();
+      editListStripe.classList.add('has-clips');
+      document.getElementById('stripes-area').classList.add('has-edit-list');
+      drawEditListStripe();
+    });
+
+    // DELETE - mark frames as deleted
+    btnDelete.addEventListener('click', () => {
+      const { inTime, outTime } = getSelection();
+
+      // Mark all frames in range as deleted (inclusive of both in and out frames)
+      let deletedCount = 0;
+      for (const frame of state.frames) {
+        if (frame.time >= inTime && frame.time <= outTime) {
+          frame.deleted = true;
+          deletedCount++;
+        }
+      }
+
+      updateEffectiveTimes();
+      console.info(`DELETE: ${formatTime(inTime)} - ${formatTime(outTime)} (${deletedCount} frames)`);
+
+      // Move playhead to the cut point (where the delete started)
+      state.currentTime = sourceToEffective(inTime);
+      state.markIn = null;
+      state.markOut = null;
+      updateMarkerDisplay();
+      drawAllStripes();
+      drawPreview();
+    });
+
+    // MOVE - add to edit list AND mark as deleted from source
+    btnMove.addEventListener('click', () => {
+      const { inTime, outTime } = getSelection();
+
+      // Add to edit list
+      state.editList.push({ inTime, outTime });
+      state.editListDuration = state.editList.reduce((sum, clip) => sum + (clip.outTime - clip.inTime), 0);
+
+      // Mark frames as deleted (inclusive of both in and out frames)
+      let deletedCount = 0;
+      for (const frame of state.frames) {
+        if (frame.time >= inTime && frame.time <= outTime) {
+          frame.deleted = true;
+          deletedCount++;
+        }
+      }
+
+      updateEffectiveTimes();
+      console.info(`MOVE: ${formatTime(inTime)} - ${formatTime(outTime)} (${deletedCount} frames)`);
+      console.info(`Edit list: ${state.editList.length} clips, ${state.editListDuration.toFixed(2)}s`);
+      state.markIn = null;
+      state.markOut = null;
+      updateMarkerDisplay();
+      editListStripe.classList.add('has-clips');
+      document.getElementById('stripes-area').classList.add('has-edit-list');
+      drawEditListStripe();
+      drawAllStripes();
+    });
+
+    // Check if a time is in a deleted frame
+    function isDeleted(time) {
+      const frame = getFrameAtTime(time);
+      return frame ? frame.deleted : false;
+    }
+
+    // Draw edit list stripe as continuous timeline of kept clips
+    function drawEditListStripe() {
+      if (state.editList.length === 0) return;
+
+      const width = editListStripe.clientWidth;
+      const height = editListStripe.clientHeight;
+
+      editListCanvas.width = width * 2;
+      editListCanvas.height = height * 2;
+      editListCanvas.style.width = width + 'px';
+      editListCanvas.style.height = height + 'px';
+      editListCtx.setTransform(1, 0, 0, 1, 0, 0);
+      editListCtx.scale(2, 2);
+
+      editListCtx.fillStyle = '#1a1a2e';
+      editListCtx.fillRect(0, 0, width, height);
+
+      const frameHeight = height - 4;
+      const frameWidth = Math.round((state.videoWidth / state.videoHeight) * frameHeight);
+
+      // Calculate how many frames fit on screen
+      const maxFrames = Math.floor(width / (frameWidth + 2));
+
+      // Calculate total frames in edit list based on frame interval
+      const totalEditFrames = Math.ceil(state.editListDuration / state.frameInterval);
+
+      // If more frames than fit, we need to skip some
+      const frameStep = totalEditFrames > maxFrames ? totalEditFrames / maxFrames : 1;
+
+      let x = 0;
+      let editTime = 0; // Time position in edit list timeline
+
+      for (let i = 0; i < maxFrames && editTime < state.editListDuration; i++) {
+        // Find which clip and source time this edit time corresponds to
+        let accumulatedTime = 0;
+        let sourceTime = null;
+
+        for (const clip of state.editList) {
+          const clipDuration = clip.outTime - clip.inTime;
+          if (editTime < accumulatedTime + clipDuration) {
+            // This frame is in this clip
+            const offsetInClip = editTime - accumulatedTime;
+            sourceTime = clip.inTime + offsetInClip;
+            break;
+          }
+          accumulatedTime += clipDuration;
+        }
+
+        if (sourceTime !== null) {
+          const frame = getFrameAtTime(sourceTime);
+          if (frame && frame.image) {
+            editListCtx.drawImage(frame.image, x, 2, frameWidth, frameHeight);
+            editListCtx.strokeStyle = '#3b82f6';
+            editListCtx.strokeRect(x, 2, frameWidth, frameHeight);
+          }
+        }
+
+        x += frameWidth + 2;
+        editTime += frameStep * state.frameInterval;
+      }
+
+      // Update label
+      editListStripe.querySelector('.stripe-label').textContent =
+        `Edit List (${state.editList.length} clips, ${state.editListDuration.toFixed(1)}s)`;
+    }
+
+    // Override drawStripe to show markers and deleted regions
+    const originalDrawStripe = drawStripe;
+    drawStripe = function(stripe) {
+      originalDrawStripe(stripe);
+
+      const ctx = stripe.ctx;
+      const width = stripe.element.clientWidth;
+      const height = stripe.element.clientHeight;
+      const timeWindow = stripe.window;
+      const timePerPixel = timeWindow / width;
+      const centerX = width / 2;
+
+      // Deleted frames are now skipped automatically (using effective time)
+      // No red overlay needed - the timeline closes up
+
+      // Draw mark in (markers are in source time, convert to effective for display)
+      if (state.markIn !== null && !isInDeletedRange(state.markIn)) {
+        const effectiveMarkIn = sourceToEffective(state.markIn);
+        const timeDiff = effectiveMarkIn - state.currentTime;
+        const x = centerX + (timeDiff / timePerPixel);
+        if (x >= 0 && x <= width) {
+          ctx.strokeStyle = '#22c55e';
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.moveTo(x, 0);
+          ctx.lineTo(x, height);
+          ctx.stroke();
+          ctx.beginPath();
+          ctx.moveTo(x + 10, 0);
+          ctx.lineTo(x, 0);
+          ctx.lineTo(x, height);
+          ctx.lineTo(x + 10, height);
+          ctx.stroke();
+        }
+      }
+
+      // Draw mark out
+      if (state.markOut !== null && !isInDeletedRange(state.markOut)) {
+        const effectiveMarkOut = sourceToEffective(state.markOut);
+        const timeDiff = effectiveMarkOut - state.currentTime;
+        const x = centerX + (timeDiff / timePerPixel);
+        if (x >= 0 && x <= width) {
+          ctx.strokeStyle = '#ef4444';
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.moveTo(x, 0);
+          ctx.lineTo(x, height);
+          ctx.stroke();
+          ctx.beginPath();
+          ctx.moveTo(x - 10, 0);
+          ctx.lineTo(x, 0);
+          ctx.lineTo(x, height);
+          ctx.lineTo(x - 10, height);
+          ctx.stroke();
+        }
+      }
+
+      // Highlight region between markers
+      if (state.markIn !== null && state.markOut !== null) {
+        const effectiveIn = sourceToEffective(state.markIn);
+        const effectiveOut = sourceToEffective(state.markOut);
+        const inDiff = effectiveIn - state.currentTime;
+        const outDiff = effectiveOut - state.currentTime;
+        const x1 = centerX + (inDiff / timePerPixel);
+        const x2 = centerX + (outDiff / timePerPixel);
+        ctx.fillStyle = 'rgba(59, 130, 246, 0.3)';
+        ctx.fillRect(Math.max(0, x1), 0, Math.min(width, x2) - Math.max(0, x1), height);
+      }
+    };
+  </script>
+</body>
+</html>
