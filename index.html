@@ -715,6 +715,13 @@
       drawAllStripes();
     }
 
+    // Update preview when video seeks (for scrubbing)
+    video.addEventListener('seeked', () => {
+      if (!state.isPlaying) {
+        drawPreview();
+      }
+    });
+
     // Animation loop
     function animate() {
       if (state.isPlaying) {
