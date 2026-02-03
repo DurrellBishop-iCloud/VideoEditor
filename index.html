@@ -487,7 +487,7 @@
 </head>
 <body>
   <!-- Version -->
-  <div id="version">v1.8</div>
+  <div id="version">v1.9</div>
 
   <!-- Control Panel Toggle -->
   <button id="control-toggle">&#9881;</button>
@@ -505,7 +505,7 @@
       <span>Debug Console</span>
       <button class="control-btn secondary" id="debug-toggle">Show</button>
     </div>
-    <div class="control-version">Three Line Edit v1.8</div>
+    <div class="control-version">Three Line Edit v1.9</div>
   </div>
 
   <!-- Debug Console -->
@@ -977,10 +977,33 @@
       // Check for unexpected jumps to start
       if (state.duration > 0 && !state.isPlaying) {
         if (video.currentTime < 0.1 && state.currentTime > 1) {
-          console.error(`VIDEO JUMPED TO START! Was at ${state.currentTime.toFixed(2)}s`);
+          console.error(`VIDEO JUMPED TO START! Was at ${state.currentTime.toFixed(2)}s - attempting recovery`);
+          // Try to recover by seeking back to where we were
+          video.currentTime = state.currentTime;
         }
       }
     });
+
+    // iOS keepalive - prevent Safari from releasing video buffer
+    let lastKeepAlive = Date.now();
+    setInterval(() => {
+      if (state.duration > 0 && !state.isPlaying) {
+        const now = Date.now();
+        // Every 3 seconds, "touch" the video to keep it alive
+        if (now - lastKeepAlive > 3000) {
+          lastKeepAlive = now;
+          // Small seek to current position keeps buffer active
+          const targetTime = state.currentTime;
+          if (Math.abs(video.currentTime - targetTime) > 0.5) {
+            console.warn(`Keepalive: resyncing video from ${video.currentTime.toFixed(2)} to ${targetTime.toFixed(2)}`);
+            video.currentTime = targetTime;
+          }
+        }
+      }
+    }, 1000);
+
+    // Store video URL globally so we can reload if needed
+    let videoUrl = null;
 
     // Animation loop
     function animate() {
@@ -1001,8 +1024,12 @@
       console.info(`Loading video: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)`);
       console.log(`File type: ${file.type}`);
 
-      const url = URL.createObjectURL(file);
-      video.src = url;
+      // Store URL globally for potential recovery
+      videoUrl = URL.createObjectURL(file);
+      video.src = videoUrl;
+
+      // Force load on iOS
+      video.load();
 
       loadOverlay.querySelector('p').textContent = 'Loading video...';
 
