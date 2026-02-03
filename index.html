@@ -411,7 +411,7 @@
 </head>
 <body>
   <!-- Version -->
-  <div id="version">v1.3</div>
+  <div id="version">v1.4</div>
 
   <!-- Control Panel Toggle -->
   <button id="control-toggle">&#9881;</button>
@@ -429,7 +429,7 @@
       <span>Debug Console</span>
       <button class="control-btn secondary" id="debug-toggle">Show</button>
     </div>
-    <div class="control-version">Three Line Edit v1.3</div>
+    <div class="control-version">Three Line Edit v1.4</div>
   </div>
 
   <!-- Debug Console -->
@@ -460,14 +460,11 @@
     <div id="stripes-area">
       <div id="center-line"></div>
       <div id="stripes-container">
-        <div class="stripe" id="stripe-0"><span class="stripe-label">Finest</span><canvas></canvas></div>
-        <div class="stripe" id="stripe-1"><span class="stripe-label">Fine</span><canvas></canvas></div>
-        <div class="stripe" id="stripe-2"><span class="stripe-label">Detail</span><canvas></canvas></div>
-        <div class="stripe" id="stripe-3"><span class="stripe-label">Medium</span><canvas></canvas></div>
-        <div class="stripe" id="stripe-4"><span class="stripe-label">Wide</span><canvas></canvas></div>
-        <div class="stripe" id="stripe-5"><span class="stripe-label">Wider</span><canvas></canvas></div>
-        <div class="stripe" id="stripe-6"><span class="stripe-label">Coarse</span><canvas></canvas></div>
-        <div class="stripe" id="stripe-7"><span class="stripe-label">Full</span><canvas></canvas></div>
+        <div class="stripe" id="stripe-0"><span class="stripe-label">Fine</span><canvas></canvas></div>
+        <div class="stripe" id="stripe-1"><span class="stripe-label">Medium</span><canvas></canvas></div>
+        <div class="stripe" id="stripe-2"><span class="stripe-label">Wide</span><canvas></canvas></div>
+        <div class="stripe" id="stripe-3"><span class="stripe-label">Coarse</span><canvas></canvas></div>
+        <div class="stripe" id="stripe-4"><span class="stripe-label">Full</span><canvas></canvas></div>
       </div>
     </div>
   </div>
@@ -610,14 +607,11 @@
 
     // Stripe configurations (will be set relative to video length)
     const stripes = [
-      { id: 'stripe-0', baseWindow: 0.25, label: 'Finest', frameScale: 1.0 },
-      { id: 'stripe-1', baseWindow: 0.5, label: 'Fine', frameScale: 0.8 },
-      { id: 'stripe-2', baseWindow: 1, label: 'Detail', frameScale: 0.6 },
-      { id: 'stripe-3', baseWindow: 2, label: 'Medium', frameScale: 0.45 },
-      { id: 'stripe-4', baseWindow: 5, label: 'Wide', frameScale: 0.35 },
-      { id: 'stripe-5', baseWindow: 10, label: 'Wider', frameScale: 0.28 },
-      { id: 'stripe-6', baseWindow: 20, label: 'Coarse', frameScale: 0.22 },
-      { id: 'stripe-7', baseWindow: 60, label: 'Full', frameScale: 0.18 }
+      { id: 'stripe-0', baseWindow: 0.5, label: 'Fine', frameScale: 1.0 },
+      { id: 'stripe-1', baseWindow: 2, label: 'Medium', frameScale: 0.5 },
+      { id: 'stripe-2', baseWindow: 8, label: 'Wide', frameScale: 0.3 },
+      { id: 'stripe-3', baseWindow: 30, label: 'Coarse', frameScale: 0.2 },
+      { id: 'stripe-4', baseWindow: 120, label: 'Full', frameScale: 0.15 }
     ];
 
     // Initialize stripe data
@@ -838,10 +832,23 @@
 
     // Update preview when video seeks (for scrubbing)
     video.addEventListener('seeked', () => {
-      if (!state.isPlaying) {
+      if (!state.isPlaying && state.duration > 0) {
         drawPreview();
       }
     });
+
+    // Also update preview periodically to catch any missed updates
+    setInterval(() => {
+      if (!state.isPlaying && state.duration > 0) {
+        // Sync state.currentTime with actual video position
+        if (Math.abs(video.currentTime - state.currentTime) > 0.1) {
+          console.warn(`Preview sync: video=${video.currentTime.toFixed(2)}, state=${state.currentTime.toFixed(2)}`);
+          state.currentTime = video.currentTime;
+          drawAllStripes();
+        }
+        drawPreview();
+      }
+    }, 500);
 
     // Animation loop
     function animate() {
@@ -948,8 +955,15 @@
       state.currentTime = 0;
 
       await new Promise(resolve => {
-        video.onseeked = resolve;
+        const onInitialSeek = () => {
+          video.removeEventListener('seeked', onInitialSeek);
+          resolve();
+        };
+        video.addEventListener('seeked', onInitialSeek);
       });
+
+      // Clear any lingering onseeked handler from extraction
+      video.onseeked = null;
 
       console.log('Drawing initial state...');
       drawPreview();
