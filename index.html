@@ -411,7 +411,7 @@
 </head>
 <body>
   <!-- Version -->
-  <div id="version">v1.4</div>
+  <div id="version">v1.5</div>
 
   <!-- Control Panel Toggle -->
   <button id="control-toggle">&#9881;</button>
@@ -429,7 +429,7 @@
       <span>Debug Console</span>
       <button class="control-btn secondary" id="debug-toggle">Show</button>
     </div>
-    <div class="control-version">Three Line Edit v1.4</div>
+    <div class="control-version">Three Line Edit v1.5</div>
   </div>
 
   <!-- Debug Console -->
@@ -451,7 +451,7 @@
     </div>
 
     <div id="preview-area">
-      <video id="video" playsinline></video>
+      <video id="video" playsinline preload="auto" muted></video>
       <canvas id="preview-canvas"></canvas>
       <div id="play-indicator"></div>
       <div id="time-display">00:00.000 / 00:00.000</div>
@@ -837,18 +837,35 @@
       }
     });
 
-    // Also update preview periodically to catch any missed updates
-    setInterval(() => {
-      if (!state.isPlaying && state.duration > 0) {
-        // Sync state.currentTime with actual video position
-        if (Math.abs(video.currentTime - state.currentTime) > 0.1) {
-          console.warn(`Preview sync: video=${video.currentTime.toFixed(2)}, state=${state.currentTime.toFixed(2)}`);
-          state.currentTime = video.currentTime;
-          drawAllStripes();
+    // Monitor video events to catch buffer/reset issues
+    video.addEventListener('emptied', () => {
+      console.error('VIDEO EVENT: emptied - buffer was cleared!');
+    });
+
+    video.addEventListener('stalled', () => {
+      console.warn('VIDEO EVENT: stalled - buffering stalled');
+    });
+
+    video.addEventListener('waiting', () => {
+      console.warn('VIDEO EVENT: waiting - waiting for data');
+    });
+
+    video.addEventListener('error', () => {
+      console.error(`VIDEO EVENT: error - ${video.error ? video.error.message : 'unknown'}`);
+    });
+
+    video.addEventListener('loadstart', () => {
+      console.info('VIDEO EVENT: loadstart');
+    });
+
+    video.addEventListener('timeupdate', () => {
+      // Check for unexpected jumps to start
+      if (state.duration > 0 && !state.isPlaying) {
+        if (video.currentTime < 0.1 && state.currentTime > 1) {
+          console.error(`VIDEO JUMPED TO START! Was at ${state.currentTime.toFixed(2)}s`);
         }
-        drawPreview();
       }
-    }, 500);
+    });
 
     // Animation loop
     function animate() {
