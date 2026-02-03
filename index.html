@@ -1,0 +1,633 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Three Line Edit</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      touch-action: none;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #1a1a1a;
+      font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+
+    #app {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* File input overlay */
+    #load-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: #1a1a1a;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+      color: #fff;
+    }
+
+    #load-overlay.hidden {
+      display: none;
+    }
+
+    #load-overlay label {
+      padding: 20px 40px;
+      background: #3b82f6;
+      border-radius: 12px;
+      font-size: 18px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    #load-overlay input {
+      display: none;
+    }
+
+    #load-overlay p {
+      margin-top: 20px;
+      color: #888;
+      font-size: 14px;
+    }
+
+    /* Preview area - top half */
+    #preview-area {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #000;
+      position: relative;
+      overflow: hidden;
+    }
+
+    #video {
+      display: none;
+    }
+
+    #preview-canvas {
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+    }
+
+    #play-indicator {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 60px;
+      height: 60px;
+      background: rgba(0,0,0,0.6);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+
+    #play-indicator.show {
+      opacity: 1;
+    }
+
+    #play-indicator::after {
+      content: '';
+      width: 0;
+      height: 0;
+      border-left: 20px solid white;
+      border-top: 12px solid transparent;
+      border-bottom: 12px solid transparent;
+      margin-left: 5px;
+    }
+
+    #play-indicator.playing::after {
+      border: none;
+      width: 20px;
+      height: 24px;
+      background: linear-gradient(to right, white 35%, transparent 35%, transparent 65%, white 65%);
+      margin-left: 0;
+    }
+
+    #time-display {
+      position: absolute;
+      bottom: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0,0,0,0.7);
+      color: #fff;
+      padding: 6px 14px;
+      border-radius: 6px;
+      font-size: 14px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* Stripes area - bottom half */
+    #stripes-area {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      background: #0a0a0a;
+      position: relative;
+    }
+
+    /* Center line indicator */
+    #center-line {
+      position: absolute;
+      top: 0;
+      left: 50%;
+      width: 2px;
+      height: 100%;
+      background: #ef4444;
+      z-index: 10;
+      pointer-events: none;
+    }
+
+    #center-line::before,
+    #center-line::after {
+      content: '';
+      position: absolute;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 0;
+      height: 0;
+      border-left: 8px solid transparent;
+      border-right: 8px solid transparent;
+    }
+
+    #center-line::before {
+      top: 0;
+      border-top: 10px solid #ef4444;
+    }
+
+    #center-line::after {
+      bottom: 0;
+      border-bottom: 10px solid #ef4444;
+    }
+
+    .stripe {
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+      border-bottom: 1px solid #333;
+    }
+
+    .stripe:last-child {
+      border-bottom: none;
+    }
+
+    .stripe-label {
+      position: absolute;
+      top: 4px;
+      left: 8px;
+      background: rgba(0,0,0,0.7);
+      color: #888;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      z-index: 5;
+      pointer-events: none;
+    }
+
+    .stripe canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      height: 100%;
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <div id="load-overlay">
+      <label>
+        Load Video
+        <input type="file" id="file-input" accept="video/*">
+      </label>
+      <p>Select a video file to begin editing</p>
+    </div>
+
+    <div id="preview-area">
+      <video id="video" playsinline></video>
+      <canvas id="preview-canvas"></canvas>
+      <div id="play-indicator"></div>
+      <div id="time-display">00:00.000 / 00:00.000</div>
+    </div>
+
+    <div id="stripes-area">
+      <div id="center-line"></div>
+      <div class="stripe" id="stripe-fine">
+        <span class="stripe-label">Fine</span>
+        <canvas></canvas>
+      </div>
+      <div class="stripe" id="stripe-medium">
+        <span class="stripe-label">Medium</span>
+        <canvas></canvas>
+      </div>
+      <div class="stripe" id="stripe-coarse">
+        <span class="stripe-label">Coarse</span>
+        <canvas></canvas>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // State
+    const state = {
+      video: null,
+      duration: 0,
+      currentTime: 0,
+      isPlaying: false,
+      frames: [], // Cached frame images
+      frameInterval: 1/30, // Seconds between cached frames
+      videoWidth: 0,
+      videoHeight: 0
+    };
+
+    // Elements
+    const video = document.getElementById('video');
+    const previewCanvas = document.getElementById('preview-canvas');
+    const previewCtx = previewCanvas.getContext('2d');
+    const playIndicator = document.getElementById('play-indicator');
+    const timeDisplay = document.getElementById('time-display');
+    const loadOverlay = document.getElementById('load-overlay');
+    const fileInput = document.getElementById('file-input');
+    const stripesArea = document.getElementById('stripes-area');
+
+    // Stripe configurations (will be set relative to video length)
+    const stripes = [
+      { id: 'stripe-fine', baseWindow: 0.5, label: 'Fine' },
+      { id: 'stripe-medium', baseWindow: 5, label: 'Medium' },
+      { id: 'stripe-coarse', baseWindow: 10, label: 'Coarse' }
+    ];
+
+    // Initialize stripe data
+    stripes.forEach(stripe => {
+      stripe.element = document.getElementById(stripe.id);
+      stripe.canvas = stripe.element.querySelector('canvas');
+      stripe.ctx = stripe.canvas.getContext('2d');
+      stripe.window = stripe.baseWindow; // Will be adjusted
+    });
+
+    // Format time as MM:SS.mmm
+    function formatTime(seconds) {
+      const mins = Math.floor(seconds / 60);
+      const secs = Math.floor(seconds % 60);
+      const ms = Math.floor((seconds % 1) * 1000);
+      return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}.${ms.toString().padStart(3, '0')}`;
+    }
+
+    // Update time display
+    function updateTimeDisplay() {
+      timeDisplay.textContent = `${formatTime(state.currentTime)} / ${formatTime(state.duration)}`;
+    }
+
+    // Adjust windows relative to video length
+    function adjustWindows() {
+      const dur = state.duration;
+      // Scale windows: for a 60s video, use base values
+      // For shorter/longer, scale proportionally but with limits
+      const scale = Math.max(0.1, Math.min(2, dur / 60));
+
+      stripes[0].window = Math.max(0.25, 0.5 * scale);   // Fine: 0.25s - 1s
+      stripes[1].window = Math.max(2, 5 * scale);        // Medium: 2s - 10s
+      stripes[2].window = Math.max(5, 10 * scale);       // Coarse: 5s - 20s
+
+      // Update labels
+      stripes[0].element.querySelector('.stripe-label').textContent =
+        `Fine (${stripes[0].window.toFixed(1)}s)`;
+      stripes[1].element.querySelector('.stripe-label').textContent =
+        `Medium (${stripes[1].window.toFixed(1)}s)`;
+      stripes[2].element.querySelector('.stripe-label').textContent =
+        `Coarse (${stripes[2].window.toFixed(1)}s)`;
+    }
+
+    // Extract frames from video
+    async function extractFrames() {
+      state.frames = [];
+      const tempCanvas = document.createElement('canvas');
+      const tempCtx = tempCanvas.getContext('2d');
+
+      // Use smaller thumbnails for memory efficiency
+      const thumbHeight = 80;
+      const thumbWidth = Math.round((state.videoWidth / state.videoHeight) * thumbHeight);
+      tempCanvas.width = thumbWidth;
+      tempCanvas.height = thumbHeight;
+
+      const totalFrames = Math.ceil(state.duration / state.frameInterval);
+
+      return new Promise((resolve) => {
+        let frameIndex = 0;
+
+        const extractNext = () => {
+          if (frameIndex >= totalFrames) {
+            resolve();
+            return;
+          }
+
+          const time = frameIndex * state.frameInterval;
+          video.currentTime = time;
+        };
+
+        video.onseeked = () => {
+          tempCtx.drawImage(video, 0, 0, thumbWidth, thumbHeight);
+          state.frames.push({
+            time: frameIndex * state.frameInterval,
+            imageData: tempCanvas.toDataURL('image/jpeg', 0.7)
+          });
+          frameIndex++;
+
+          // Show progress
+          const progress = Math.round((frameIndex / totalFrames) * 100);
+          loadOverlay.querySelector('p').textContent = `Extracting frames: ${progress}%`;
+
+          // Use setTimeout to prevent blocking
+          setTimeout(extractNext, 0);
+        };
+
+        extractNext();
+      });
+    }
+
+    // Draw preview frame
+    function drawPreview() {
+      previewCtx.drawImage(video, 0, 0, previewCanvas.width, previewCanvas.height);
+    }
+
+    // Find closest cached frame
+    function getFrameAtTime(time) {
+      if (state.frames.length === 0) return null;
+
+      let closest = state.frames[0];
+      let minDiff = Math.abs(time - closest.time);
+
+      for (const frame of state.frames) {
+        const diff = Math.abs(time - frame.time);
+        if (diff < minDiff) {
+          minDiff = diff;
+          closest = frame;
+        }
+        if (frame.time > time) break; // Frames are sorted
+      }
+
+      return closest;
+    }
+
+    // Draw a stripe
+    function drawStripe(stripe) {
+      const canvas = stripe.canvas;
+      const ctx = stripe.ctx;
+      const window = stripe.window;
+
+      const width = canvas.width;
+      const height = canvas.height;
+
+      ctx.fillStyle = '#0a0a0a';
+      ctx.fillRect(0, 0, width, height);
+
+      // Calculate frame dimensions
+      const frameHeight = height - 4;
+      const frameWidth = Math.round((state.videoWidth / state.videoHeight) * frameHeight);
+      const frameSpacing = 2;
+
+      // How many frames fit in the window?
+      const framesInWindow = Math.ceil(width / (frameWidth + frameSpacing)) + 2;
+
+      // Time per pixel
+      const timePerPixel = window / width;
+
+      // Calculate start time (left edge)
+      const startTime = state.currentTime - (window / 2);
+
+      // Draw frames
+      const centerX = width / 2;
+
+      // Calculate which frames to show
+      const frameTimeStep = window / framesInWindow;
+
+      for (let i = -Math.ceil(framesInWindow / 2); i <= Math.ceil(framesInWindow / 2); i++) {
+        const frameTime = state.currentTime + (i * frameTimeStep);
+
+        if (frameTime < 0 || frameTime > state.duration) continue;
+
+        const frame = getFrameAtTime(frameTime);
+        if (!frame || !frame.image) continue;
+
+        // Position based on time difference from center
+        const timeDiff = frameTime - state.currentTime;
+        const x = centerX + (timeDiff / timePerPixel) - (frameWidth / 2);
+
+        ctx.drawImage(frame.image, x, 2, frameWidth, frameHeight);
+
+        // Draw subtle border
+        ctx.strokeStyle = '#333';
+        ctx.strokeRect(x, 2, frameWidth, frameHeight);
+      }
+    }
+
+    // Draw all stripes
+    function drawAllStripes() {
+      stripes.forEach(drawStripe);
+    }
+
+    // Seek video to time
+    function seekTo(time) {
+      state.currentTime = Math.max(0, Math.min(state.duration, time));
+      video.currentTime = state.currentTime;
+      updateTimeDisplay();
+      drawAllStripes();
+    }
+
+    // Animation loop
+    function animate() {
+      if (state.isPlaying) {
+        state.currentTime = video.currentTime;
+        drawPreview();
+        updateTimeDisplay();
+        drawAllStripes();
+      }
+      requestAnimationFrame(animate);
+    }
+
+    // Handle video load
+    async function loadVideo(file) {
+      const url = URL.createObjectURL(file);
+      video.src = url;
+
+      loadOverlay.querySelector('p').textContent = 'Loading video...';
+
+      await new Promise(resolve => {
+        video.onloadedmetadata = resolve;
+      });
+
+      state.duration = video.duration;
+      state.videoWidth = video.videoWidth;
+      state.videoHeight = video.videoHeight;
+
+      // Set up preview canvas
+      previewCanvas.width = state.videoWidth;
+      previewCanvas.height = state.videoHeight;
+
+      // Adjust time windows
+      adjustWindows();
+
+      // Set up stripe canvases
+      stripes.forEach(stripe => {
+        stripe.canvas.width = stripe.element.clientWidth * 2; // 2x for retina
+        stripe.canvas.height = stripe.element.clientHeight * 2;
+        stripe.canvas.style.width = stripe.element.clientWidth + 'px';
+        stripe.canvas.style.height = stripe.element.clientHeight + 'px';
+        stripe.ctx.scale(2, 2);
+      });
+
+      // Extract frames
+      await extractFrames();
+
+      // Load frame images
+      loadOverlay.querySelector('p').textContent = 'Loading thumbnails...';
+      await Promise.all(state.frames.map(frame => {
+        return new Promise(resolve => {
+          const img = new Image();
+          img.onload = () => {
+            frame.image = img;
+            resolve();
+          };
+          img.src = frame.imageData;
+        });
+      }));
+
+      // Initial state
+      video.currentTime = 0;
+      state.currentTime = 0;
+
+      await new Promise(resolve => {
+        video.onseeked = resolve;
+      });
+
+      drawPreview();
+      updateTimeDisplay();
+      drawAllStripes();
+
+      loadOverlay.classList.add('hidden');
+      animate();
+    }
+
+    // Touch handling for stripes
+    function setupStripeTouch(stripe) {
+      let startX = 0;
+      let startTime = 0;
+      let isDragging = false;
+
+      const handleStart = (e) => {
+        e.preventDefault();
+        const touch = e.touches ? e.touches[0] : e;
+        startX = touch.clientX;
+        startTime = state.currentTime;
+        isDragging = true;
+
+        if (state.isPlaying) {
+          video.pause();
+          state.isPlaying = false;
+          playIndicator.classList.remove('playing');
+        }
+      };
+
+      const handleMove = (e) => {
+        if (!isDragging) return;
+        e.preventDefault();
+
+        const touch = e.touches ? e.touches[0] : e;
+        const deltaX = touch.clientX - startX;
+
+        // Convert pixel delta to time delta based on stripe's window
+        const pixelsPerSecond = stripe.element.clientWidth / stripe.window;
+        const timeDelta = -deltaX / pixelsPerSecond;
+
+        seekTo(startTime + timeDelta);
+      };
+
+      const handleEnd = () => {
+        isDragging = false;
+      };
+
+      stripe.element.addEventListener('touchstart', handleStart, { passive: false });
+      stripe.element.addEventListener('touchmove', handleMove, { passive: false });
+      stripe.element.addEventListener('touchend', handleEnd);
+      stripe.element.addEventListener('touchcancel', handleEnd);
+
+      // Mouse support for desktop testing
+      stripe.element.addEventListener('mousedown', handleStart);
+      window.addEventListener('mousemove', handleMove);
+      window.addEventListener('mouseup', handleEnd);
+    }
+
+    // Preview tap to play/pause
+    previewCanvas.addEventListener('click', () => {
+      if (state.duration === 0) return;
+
+      if (state.isPlaying) {
+        video.pause();
+        state.isPlaying = false;
+        playIndicator.classList.remove('playing');
+      } else {
+        video.play();
+        state.isPlaying = true;
+        playIndicator.classList.add('playing');
+      }
+
+      playIndicator.classList.add('show');
+      setTimeout(() => playIndicator.classList.remove('show'), 500);
+    });
+
+    // Video ended
+    video.addEventListener('ended', () => {
+      state.isPlaying = false;
+      playIndicator.classList.remove('playing');
+    });
+
+    // File input
+    fileInput.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (file) {
+        loadVideo(file);
+      }
+    });
+
+    // Handle resize
+    window.addEventListener('resize', () => {
+      if (state.duration === 0) return;
+
+      stripes.forEach(stripe => {
+        stripe.canvas.width = stripe.element.clientWidth * 2;
+        stripe.canvas.height = stripe.element.clientHeight * 2;
+        stripe.canvas.style.width = stripe.element.clientWidth + 'px';
+        stripe.canvas.style.height = stripe.element.clientHeight + 'px';
+        stripe.ctx.setTransform(1, 0, 0, 1, 0, 0);
+        stripe.ctx.scale(2, 2);
+      });
+
+      drawAllStripes();
+    });
+
+    // Initialize touch handling
+    stripes.forEach(setupStripeTouch);
+  </script>
+</body>
+</html>
