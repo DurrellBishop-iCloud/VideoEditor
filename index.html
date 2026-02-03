@@ -358,7 +358,7 @@
 </head>
 <body>
   <!-- Version -->
-  <div id="version">v1.0</div>
+  <div id="version">v1.1</div>
 
   <!-- Debug Toggle -->
   <button id="debug-toggle">&#9881;</button>
@@ -538,9 +538,9 @@
 
     // Stripe configurations (will be set relative to video length)
     const stripes = [
-      { id: 'stripe-fine', baseWindow: 0.5, label: 'Fine' },
-      { id: 'stripe-medium', baseWindow: 5, label: 'Medium' },
-      { id: 'stripe-coarse', baseWindow: 10, label: 'Coarse' }
+      { id: 'stripe-fine', baseWindow: 0.5, label: 'Fine', frameScale: 1.0 },
+      { id: 'stripe-medium', baseWindow: 5, label: 'Medium', frameScale: 0.4 },
+      { id: 'stripe-coarse', baseWindow: 10, label: 'Coarse', frameScale: 0.25 }
     ];
 
     // Initialize stripe data
@@ -700,6 +700,7 @@
     function drawStripe(stripe) {
       const ctx = stripe.ctx;
       const timeWindow = stripe.window;
+      const frameScale = stripe.frameScale || 1.0;
 
       // Use element dimensions (not canvas dimensions which are 2x for retina)
       const width = stripe.element.clientWidth;
@@ -708,9 +709,10 @@
       ctx.fillStyle = '#0a0a0a';
       ctx.fillRect(0, 0, width, height);
 
-      // Calculate frame dimensions
-      const frameHeight = height - 4;
+      // Calculate frame dimensions - scale affects size
+      const frameHeight = (height - 4) * frameScale;
       const frameWidth = Math.round((state.videoWidth / state.videoHeight) * frameHeight);
+      const frameY = (height - frameHeight) / 2; // Center vertically
 
       // Time per pixel
       const timePerPixel = timeWindow / width;
@@ -736,11 +738,11 @@
         const timeDiff = frameTime - state.currentTime;
         const x = centerX + (timeDiff / timePerPixel) - (frameWidth / 2);
 
-        ctx.drawImage(frame.image, x, 2, frameWidth, frameHeight);
+        ctx.drawImage(frame.image, x, frameY, frameWidth, frameHeight);
 
         // Draw subtle border
         ctx.strokeStyle = '#333';
-        ctx.strokeRect(x, 2, frameWidth, frameHeight);
+        ctx.strokeRect(x, frameY, frameWidth, frameHeight);
       }
     }
 
