@@ -142,10 +142,19 @@
     /* Stripes area - bottom half */
     #stripes-area {
       flex: 1;
-      display: flex;
-      flex-direction: column;
       background: #0a0a0a;
       position: relative;
+      overflow: hidden;
+    }
+
+    #stripes-container {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      display: flex;
+      flex-direction: column;
+      transition: transform 0.1s ease-out;
     }
 
     /* Center line indicator */
@@ -183,14 +192,11 @@
     }
 
     .stripe {
-      flex: 1;
+      height: 80px;
       position: relative;
       overflow: hidden;
       border-bottom: 1px solid #333;
-    }
-
-    .stripe:last-child {
-      border-bottom: none;
+      flex-shrink: 0;
     }
 
     .stripe-label {
@@ -358,7 +364,7 @@
 </head>
 <body>
   <!-- Version -->
-  <div id="version">v1.1</div>
+  <div id="version">v1.2</div>
 
   <!-- Debug Toggle -->
   <button id="debug-toggle">&#9881;</button>
@@ -394,17 +400,15 @@
 
     <div id="stripes-area">
       <div id="center-line"></div>
-      <div class="stripe" id="stripe-fine">
-        <span class="stripe-label">Fine</span>
-        <canvas></canvas>
-      </div>
-      <div class="stripe" id="stripe-medium">
-        <span class="stripe-label">Medium</span>
-        <canvas></canvas>
-      </div>
-      <div class="stripe" id="stripe-coarse">
-        <span class="stripe-label">Coarse</span>
-        <canvas></canvas>
+      <div id="stripes-container">
+        <div class="stripe" id="stripe-0"><span class="stripe-label">Finest</span><canvas></canvas></div>
+        <div class="stripe" id="stripe-1"><span class="stripe-label">Fine</span><canvas></canvas></div>
+        <div class="stripe" id="stripe-2"><span class="stripe-label">Detail</span><canvas></canvas></div>
+        <div class="stripe" id="stripe-3"><span class="stripe-label">Medium</span><canvas></canvas></div>
+        <div class="stripe" id="stripe-4"><span class="stripe-label">Wide</span><canvas></canvas></div>
+        <div class="stripe" id="stripe-5"><span class="stripe-label">Wider</span><canvas></canvas></div>
+        <div class="stripe" id="stripe-6"><span class="stripe-label">Coarse</span><canvas></canvas></div>
+        <div class="stripe" id="stripe-7"><span class="stripe-label">Full</span><canvas></canvas></div>
       </div>
     </div>
   </div>
@@ -538,9 +542,14 @@
 
     // Stripe configurations (will be set relative to video length)
     const stripes = [
-      { id: 'stripe-fine', baseWindow: 0.5, label: 'Fine', frameScale: 1.0 },
-      { id: 'stripe-medium', baseWindow: 5, label: 'Medium', frameScale: 0.4 },
-      { id: 'stripe-coarse', baseWindow: 10, label: 'Coarse', frameScale: 0.25 }
+      { id: 'stripe-0', baseWindow: 0.25, label: 'Finest', frameScale: 1.0 },
+      { id: 'stripe-1', baseWindow: 0.5, label: 'Fine', frameScale: 0.8 },
+      { id: 'stripe-2', baseWindow: 1, label: 'Detail', frameScale: 0.6 },
+      { id: 'stripe-3', baseWindow: 2, label: 'Medium', frameScale: 0.45 },
+      { id: 'stripe-4', baseWindow: 5, label: 'Wide', frameScale: 0.35 },
+      { id: 'stripe-5', baseWindow: 10, label: 'Wider', frameScale: 0.28 },
+      { id: 'stripe-6', baseWindow: 20, label: 'Coarse', frameScale: 0.22 },
+      { id: 'stripe-7', baseWindow: 60, label: 'Full', frameScale: 0.18 }
     ];
 
     // Initialize stripe data
@@ -567,21 +576,21 @@
     // Adjust windows relative to video length
     function adjustWindows() {
       const dur = state.duration;
-      // Scale windows: for a 60s video, use base values
-      // For shorter/longer, scale proportionally but with limits
-      const scale = Math.max(0.1, Math.min(2, dur / 60));
+      // Scale windows based on video duration
+      const scale = Math.max(0.5, Math.min(2, dur / 30));
 
-      stripes[0].window = Math.max(0.25, 0.5 * scale);   // Fine: 0.25s - 1s
-      stripes[1].window = Math.max(2, 5 * scale);        // Medium: 2s - 10s
-      stripes[2].window = Math.max(5, 10 * scale);       // Coarse: 5s - 20s
+      stripes.forEach(stripe => {
+        // Scale the base window, but cap at video duration
+        stripe.window = Math.min(dur, stripe.baseWindow * scale);
 
-      // Update labels
-      stripes[0].element.querySelector('.stripe-label').textContent =
-        `Fine (${stripes[0].window.toFixed(1)}s)`;
-      stripes[1].element.querySelector('.stripe-label').textContent =
-        `Medium (${stripes[1].window.toFixed(1)}s)`;
-      stripes[2].element.querySelector('.stripe-label').textContent =
-        `Coarse (${stripes[2].window.toFixed(1)}s)`;
+        // Update label
+        const label = stripe.element.querySelector('.stripe-label');
+        if (stripe.window >= 60) {
+          label.textContent = `${stripe.label} (${(stripe.window/60).toFixed(1)}m)`;
+        } else {
+          label.textContent = `${stripe.label} (${stripe.window.toFixed(1)}s)`;
+        }
+      });
     }
 
     // Extract frames from video
@@ -882,17 +891,35 @@
     }
 
     // Touch handling for stripes
+    // Vertical scroll state for stripes container
+    const stripesContainer = document.getElementById('stripes-container');
+    let containerScrollY = 0;
+    const stripeHeight = 80;
+    const visibleStripes = 3;
+
+    function updateContainerScroll() {
+      const maxScroll = (stripes.length - visibleStripes) * stripeHeight;
+      containerScrollY = Math.max(0, Math.min(maxScroll, containerScrollY));
+      stripesContainer.style.transform = `translateY(${-containerScrollY}px)`;
+    }
+
     function setupStripeTouch(stripe) {
       let startX = 0;
+      let startY = 0;
       let startTime = 0;
+      let startScrollY = 0;
       let isDragging = false;
+      let direction = null; // 'horizontal' or 'vertical'
 
       const handleStart = (e) => {
         e.preventDefault();
         const touch = e.touches ? e.touches[0] : e;
         startX = touch.clientX;
+        startY = touch.clientY;
         startTime = state.currentTime;
+        startScrollY = containerScrollY;
         isDragging = true;
+        direction = null;
 
         if (state.isPlaying) {
           video.pause();
@@ -907,16 +934,32 @@
 
         const touch = e.touches ? e.touches[0] : e;
         const deltaX = touch.clientX - startX;
+        const deltaY = touch.clientY - startY;
 
-        // Convert pixel delta to time delta based on stripe's window
-        const pixelsPerSecond = stripe.element.clientWidth / stripe.window;
-        const timeDelta = -deltaX / pixelsPerSecond;
+        // Determine direction on first significant movement
+        if (!direction) {
+          if (Math.abs(deltaX) > 10 || Math.abs(deltaY) > 10) {
+            direction = Math.abs(deltaX) > Math.abs(deltaY) ? 'horizontal' : 'vertical';
+          } else {
+            return;
+          }
+        }
 
-        seekTo(startTime + timeDelta);
+        if (direction === 'horizontal') {
+          // Scrub timeline
+          const pixelsPerSecond = stripe.element.clientWidth / stripe.window;
+          const timeDelta = -deltaX / pixelsPerSecond;
+          seekTo(startTime + timeDelta);
+        } else {
+          // Scroll stripes vertically
+          containerScrollY = startScrollY - deltaY;
+          updateContainerScroll();
+        }
       };
 
       const handleEnd = () => {
         isDragging = false;
+        direction = null;
       };
 
       stripe.element.addEventListener('touchstart', handleStart, { passive: false });
