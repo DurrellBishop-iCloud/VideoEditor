@@ -180,8 +180,11 @@
       height: 60px;
       background: #1a1a2e;
       border-bottom: 2px solid #3b82f6;
-      position: relative;
-      flex-shrink: 0;
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 5;
       display: none;
     }
 
@@ -190,15 +193,28 @@
     }
 
     #edit-list-stripe .stripe-label {
+      position: absolute;
+      top: 4px;
+      left: 8px;
       background: #3b82f6;
       color: white;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      z-index: 6;
     }
 
     #edit-list-stripe canvas {
       position: absolute;
       top: 0;
       left: 0;
+      width: 100%;
       height: 100%;
+    }
+
+    /* Adjust stripes container when edit list is visible */
+    #stripes-area.has-edit-list #stripes-container {
+      top: 62px;
     }
 
     /* Stripes area - bottom half */
@@ -487,7 +503,7 @@
 </head>
 <body>
   <!-- Version -->
-  <div id="version">v1.9</div>
+  <div id="version">v2.0</div>
 
   <!-- Control Panel Toggle -->
   <button id="control-toggle">&#9881;</button>
@@ -505,7 +521,7 @@
       <span>Debug Console</span>
       <button class="control-btn secondary" id="debug-toggle">Show</button>
     </div>
-    <div class="control-version">Three Line Edit v1.9</div>
+    <div class="control-version">Three Line Edit v2.0</div>
   </div>
 
   <!-- Debug Console -->
@@ -1399,6 +1415,7 @@
       state.markOut = null;
       updateMarkerDisplay();
       editListStripe.classList.add('has-clips');
+      document.getElementById('stripes-area').classList.add('has-edit-list');
       drawEditListStripe();
     });
 
@@ -1427,6 +1444,7 @@
       state.markOut = null;
       updateMarkerDisplay();
       editListStripe.classList.add('has-clips');
+      document.getElementById('stripes-area').classList.add('has-edit-list');
       drawEditListStripe();
       drawAllStripes();
     });
