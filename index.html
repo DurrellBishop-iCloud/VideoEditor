@@ -213,6 +213,17 @@
       height: 100%;
     }
 
+    /* Version number */
+    #version {
+      position: fixed;
+      top: 10px;
+      left: 10px;
+      color: #666;
+      font-size: 11px;
+      z-index: 1001;
+      pointer-events: none;
+    }
+
     /* Debug Toggle Button */
     #debug-toggle {
       position: fixed;
@@ -346,6 +357,9 @@
   </style>
 </head>
 <body>
+  <!-- Version -->
+  <div id="version">v1.0</div>
+
   <!-- Debug Toggle -->
   <button id="debug-toggle">&#9881;</button>
 
