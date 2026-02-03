@@ -125,6 +125,82 @@
       font-variant-numeric: tabular-nums;
     }
 
+    /* Edit buttons panel */
+    #edit-panel {
+      position: absolute;
+      right: 10px;
+      top: 50%;
+      transform: translateY(-50%);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      z-index: 10;
+    }
+
+    .edit-btn {
+      width: 50px;
+      height: 50px;
+      border: none;
+      border-radius: 8px;
+      background: rgba(0,0,0,0.6);
+      color: white;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 2px;
+    }
+
+    .edit-btn.active {
+      background: #3b82f6;
+    }
+
+    .edit-btn .icon {
+      font-size: 18px;
+    }
+
+    #marker-display {
+      position: absolute;
+      bottom: 40px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0,0,0,0.7);
+      color: #22c55e;
+      padding: 4px 10px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* Edit list stripe */
+    #edit-list-stripe {
+      height: 60px;
+      background: #1a1a2e;
+      border-bottom: 2px solid #3b82f6;
+      position: relative;
+      flex-shrink: 0;
+      display: none;
+    }
+
+    #edit-list-stripe.has-clips {
+      display: block;
+    }
+
+    #edit-list-stripe .stripe-label {
+      background: #3b82f6;
+      color: white;
+    }
+
+    #edit-list-stripe canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      height: 100%;
+    }
+
     /* Stripes area - bottom half */
     #stripes-area {
       flex: 1;
@@ -411,7 +487,7 @@
 </head>
 <body>
   <!-- Version -->
-  <div id="version">v1.5</div>
+  <div id="version">v1.6</div>
 
   <!-- Control Panel Toggle -->
   <button id="control-toggle">&#9881;</button>
@@ -429,7 +505,7 @@
       <span>Debug Console</span>
       <button class="control-btn secondary" id="debug-toggle">Show</button>
     </div>
-    <div class="control-version">Three Line Edit v1.5</div>
+    <div class="control-version">Three Line Edit v1.6</div>
   </div>
 
   <!-- Debug Console -->
@@ -455,10 +531,33 @@
       <canvas id="preview-canvas"></canvas>
       <div id="play-indicator"></div>
       <div id="time-display">00:00.000 / 00:00.000</div>
+      <div id="marker-display" style="display:none"></div>
+      <div id="edit-panel">
+        <button class="edit-btn" id="btn-mark-in">
+          <span class="icon">[</span>
+          <span>IN</span>
+        </button>
+        <button class="edit-btn" id="btn-mark-out">
+          <span class="icon">]</span>
+          <span>OUT</span>
+        </button>
+        <button class="edit-btn" id="btn-keep">
+          <span class="icon">+</span>
+          <span>KEEP</span>
+        </button>
+        <button class="edit-btn" id="btn-clear">
+          <span class="icon">×</span>
+          <span>CLR</span>
+        </button>
+      </div>
     </div>
 
     <div id="stripes-area">
       <div id="center-line"></div>
+      <div id="edit-list-stripe">
+        <span class="stripe-label">Edit List</span>
+        <canvas></canvas>
+      </div>
       <div id="stripes-container">
         <div class="stripe" id="stripe-0"><span class="stripe-label">Fine</span><canvas></canvas></div>
         <div class="stripe" id="stripe-1"><span class="stripe-label">Medium</span><canvas></canvas></div>
@@ -592,7 +691,13 @@
       frames: [], // Cached frame images
       frameInterval: 1/30, // Seconds between cached frames
       videoWidth: 0,
-      videoHeight: 0
+      videoHeight: 0,
+      // Edit markers
+      markIn: null,
+      markOut: null,
+      // Edit list - array of {inTime, outTime} clips
+      editList: [],
+      editListDuration: 0
     };
 
     // Elements
@@ -1125,6 +1230,228 @@
 
     // Initialize touch handling
     stripes.forEach(setupStripeTouch);
+
+    // ===== EDIT FUNCTIONALITY =====
+    const btnMarkIn = document.getElementById('btn-mark-in');
+    const btnMarkOut = document.getElementById('btn-mark-out');
+    const btnKeep = document.getElementById('btn-keep');
+    const btnClear = document.getElementById('btn-clear');
+    const markerDisplay = document.getElementById('marker-display');
+    const editListStripe = document.getElementById('edit-list-stripe');
+    const editListCanvas = editListStripe.querySelector('canvas');
+    const editListCtx = editListCanvas.getContext('2d');
+
+    function updateMarkerDisplay() {
+      if (state.markIn === null && state.markOut === null) {
+        markerDisplay.style.display = 'none';
+        btnMarkIn.classList.remove('active');
+        btnMarkOut.classList.remove('active');
+      } else {
+        markerDisplay.style.display = 'block';
+        let text = '';
+        if (state.markIn !== null) {
+          text += `IN: ${formatTime(state.markIn)}`;
+          btnMarkIn.classList.add('active');
+        } else {
+          btnMarkIn.classList.remove('active');
+        }
+        if (state.markOut !== null) {
+          if (text) text += ' | ';
+          text += `OUT: ${formatTime(state.markOut)}`;
+          btnMarkOut.classList.add('active');
+        } else {
+          btnMarkOut.classList.remove('active');
+        }
+        if (state.markIn !== null && state.markOut !== null) {
+          const duration = Math.abs(state.markOut - state.markIn);
+          text += ` (${duration.toFixed(2)}s)`;
+        }
+        markerDisplay.textContent = text;
+      }
+      drawAllStripes(); // Redraw to show markers
+    }
+
+    // Mark In button
+    btnMarkIn.addEventListener('click', () => {
+      state.markIn = state.currentTime;
+      // If markOut exists and is before markIn, swap them
+      if (state.markOut !== null && state.markOut < state.markIn) {
+        [state.markIn, state.markOut] = [state.markOut, state.markIn];
+      }
+      console.info(`Mark IN set: ${formatTime(state.markIn)}`);
+      updateMarkerDisplay();
+    });
+
+    // Mark Out button
+    btnMarkOut.addEventListener('click', () => {
+      state.markOut = state.currentTime;
+      // If markIn exists and is after markOut, swap them
+      if (state.markIn !== null && state.markIn > state.markOut) {
+        [state.markIn, state.markOut] = [state.markOut, state.markIn];
+      }
+      console.info(`Mark OUT set: ${formatTime(state.markOut)}`);
+      updateMarkerDisplay();
+    });
+
+    // Clear markers button
+    btnClear.addEventListener('click', () => {
+      state.markIn = null;
+      state.markOut = null;
+      console.info('Markers cleared');
+      updateMarkerDisplay();
+    });
+
+    // Keep button - add current frame or range to edit list
+    btnKeep.addEventListener('click', () => {
+      let inTime, outTime;
+
+      if (state.markIn !== null && state.markOut !== null) {
+        // Use marked range
+        inTime = state.markIn;
+        outTime = state.markOut;
+      } else if (state.markIn !== null) {
+        // Single marker - use current frame
+        inTime = state.markIn;
+        outTime = state.markIn + state.frameInterval;
+      } else if (state.markOut !== null) {
+        // Single marker - use current frame
+        inTime = state.markOut;
+        outTime = state.markOut + state.frameInterval;
+      } else {
+        // No markers - use current frame
+        inTime = state.currentTime;
+        outTime = state.currentTime + state.frameInterval;
+      }
+
+      // Add to edit list
+      state.editList.push({ inTime, outTime });
+      state.editListDuration = state.editList.reduce((sum, clip) => sum + (clip.outTime - clip.inTime), 0);
+
+      console.info(`Added clip: ${formatTime(inTime)} - ${formatTime(outTime)} (${(outTime - inTime).toFixed(2)}s)`);
+      console.info(`Edit list now has ${state.editList.length} clips, total ${state.editListDuration.toFixed(2)}s`);
+
+      // Clear markers after adding
+      state.markIn = null;
+      state.markOut = null;
+      updateMarkerDisplay();
+
+      // Show and update edit list stripe
+      editListStripe.classList.add('has-clips');
+      drawEditListStripe();
+    });
+
+    // Draw edit list stripe
+    function drawEditListStripe() {
+      if (state.editList.length === 0) return;
+
+      const width = editListStripe.clientWidth;
+      const height = editListStripe.clientHeight;
+
+      editListCanvas.width = width * 2;
+      editListCanvas.height = height * 2;
+      editListCanvas.style.width = width + 'px';
+      editListCanvas.style.height = height + 'px';
+      editListCtx.setTransform(1, 0, 0, 1, 0, 0);
+      editListCtx.scale(2, 2);
+
+      editListCtx.fillStyle = '#1a1a2e';
+      editListCtx.fillRect(0, 0, width, height);
+
+      // Draw clips as thumbnails
+      const frameHeight = height - 4;
+      const frameWidth = Math.round((state.videoWidth / state.videoHeight) * frameHeight);
+
+      let x = 10;
+      state.editList.forEach((clip, index) => {
+        // Get frame at clip's in point
+        const frame = getFrameAtTime(clip.inTime);
+        if (frame && frame.image) {
+          editListCtx.drawImage(frame.image, x, 2, frameWidth, frameHeight);
+          editListCtx.strokeStyle = '#3b82f6';
+          editListCtx.lineWidth = 2;
+          editListCtx.strokeRect(x, 2, frameWidth, frameHeight);
+
+          // Draw duration
+          const clipDur = (clip.outTime - clip.inTime).toFixed(1);
+          editListCtx.fillStyle = 'rgba(0,0,0,0.7)';
+          editListCtx.fillRect(x, frameHeight - 14, frameWidth, 16);
+          editListCtx.fillStyle = '#fff';
+          editListCtx.font = '10px sans-serif';
+          editListCtx.fillText(`${clipDur}s`, x + 4, frameHeight);
+        }
+        x += frameWidth + 4;
+      });
+
+      // Update label
+      editListStripe.querySelector('.stripe-label').textContent =
+        `Edit List (${state.editList.length} clips, ${state.editListDuration.toFixed(1)}s)`;
+    }
+
+    // Draw markers on stripes
+    const originalDrawStripe = drawStripe;
+    drawStripe = function(stripe) {
+      originalDrawStripe(stripe);
+
+      // Draw markers if set
+      const ctx = stripe.ctx;
+      const width = stripe.element.clientWidth;
+      const height = stripe.element.clientHeight;
+      const timeWindow = stripe.window;
+      const timePerPixel = timeWindow / width;
+      const centerX = width / 2;
+
+      // Draw mark in
+      if (state.markIn !== null) {
+        const timeDiff = state.markIn - state.currentTime;
+        const x = centerX + (timeDiff / timePerPixel);
+        if (x >= 0 && x <= width) {
+          ctx.strokeStyle = '#22c55e';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.moveTo(x, 0);
+          ctx.lineTo(x, height);
+          ctx.stroke();
+          // Draw bracket
+          ctx.beginPath();
+          ctx.moveTo(x + 8, 0);
+          ctx.lineTo(x, 0);
+          ctx.lineTo(x, height);
+          ctx.lineTo(x + 8, height);
+          ctx.stroke();
+        }
+      }
+
+      // Draw mark out
+      if (state.markOut !== null) {
+        const timeDiff = state.markOut - state.currentTime;
+        const x = centerX + (timeDiff / timePerPixel);
+        if (x >= 0 && x <= width) {
+          ctx.strokeStyle = '#ef4444';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.moveTo(x, 0);
+          ctx.lineTo(x, height);
+          ctx.stroke();
+          // Draw bracket
+          ctx.beginPath();
+          ctx.moveTo(x - 8, 0);
+          ctx.lineTo(x, 0);
+          ctx.lineTo(x, height);
+          ctx.lineTo(x - 8, height);
+          ctx.stroke();
+        }
+      }
+
+      // Highlight region between markers
+      if (state.markIn !== null && state.markOut !== null) {
+        const inDiff = state.markIn - state.currentTime;
+        const outDiff = state.markOut - state.currentTime;
+        const x1 = centerX + (inDiff / timePerPixel);
+        const x2 = centerX + (outDiff / timePerPixel);
+        ctx.fillStyle = 'rgba(59, 130, 246, 0.2)';
+        ctx.fillRect(Math.max(0, x1), 0, Math.min(width, x2) - Math.max(0, x1), height);
+      }
+    };
   </script>
 </body>
 </html>
