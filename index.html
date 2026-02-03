@@ -212,9 +212,131 @@
       left: 0;
       height: 100%;
     }
+
+    /* Debug Console */
+    #debug-console {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 40%;
+      background: rgba(0, 0, 0, 0.95);
+      border-top: 2px solid #22c55e;
+      z-index: 1000;
+      display: flex;
+      flex-direction: column;
+      font-family: 'SF Mono', Monaco, 'Courier New', monospace;
+    }
+
+    #debug-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 12px;
+      background: #1a1a1a;
+      border-bottom: 1px solid #333;
+    }
+
+    #debug-header span {
+      color: #22c55e;
+      font-size: 12px;
+      font-weight: bold;
+    }
+
+    #debug-buttons {
+      display: flex;
+      gap: 8px;
+    }
+
+    #debug-buttons button {
+      padding: 6px 12px;
+      font-size: 12px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: 600;
+    }
+
+    #copy-btn {
+      background: #3b82f6;
+      color: white;
+    }
+
+    #clear-btn {
+      background: #ef4444;
+      color: white;
+    }
+
+    #debug-log {
+      flex: 1;
+      overflow-y: auto;
+      padding: 8px 12px;
+      font-size: 11px;
+      line-height: 1.4;
+      -webkit-overflow-scrolling: touch;
+      user-select: text;
+      -webkit-user-select: text;
+    }
+
+    .log-entry {
+      padding: 4px 0;
+      border-bottom: 1px solid #222;
+      color: #ddd;
+      word-wrap: break-word;
+    }
+
+    .log-entry.error {
+      color: #ef4444;
+    }
+
+    .log-entry.warn {
+      color: #f59e0b;
+    }
+
+    .log-entry.info {
+      color: #22c55e;
+    }
+
+    .log-time {
+      color: #666;
+      margin-right: 8px;
+    }
+
+    #copy-toast {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: #22c55e;
+      color: white;
+      padding: 12px 24px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      opacity: 0;
+      transition: opacity 0.3s;
+      z-index: 1001;
+    }
+
+    #copy-toast.show {
+      opacity: 1;
+    }
   </style>
 </head>
 <body>
+  <!-- Debug Console -->
+  <div id="debug-console">
+    <div id="debug-header">
+      <span>DEBUG CONSOLE</span>
+      <div id="debug-buttons">
+        <button id="copy-btn">Copy All</button>
+        <button id="clear-btn">Clear</button>
+      </div>
+    </div>
+    <div id="debug-log"></div>
+  </div>
+  <div id="copy-toast">Copied to clipboard!</div>
+
   <div id="app">
     <div id="load-overlay">
       <label>
@@ -249,6 +371,103 @@
   </div>
 
   <script>
+    // ===== DEBUG CONSOLE =====
+    const debugLog = document.getElementById('debug-log');
+    const copyBtn = document.getElementById('copy-btn');
+    const clearBtn = document.getElementById('clear-btn');
+    const copyToast = document.getElementById('copy-toast');
+    let logEntries = [];
+
+    function getTimestamp() {
+      const now = new Date();
+      return now.toTimeString().split(' ')[0] + '.' + now.getMilliseconds().toString().padStart(3, '0');
+    }
+
+    function addLog(message, type = 'log') {
+      const timestamp = getTimestamp();
+      const entry = { timestamp, message: String(message), type };
+      logEntries.push(entry);
+
+      const div = document.createElement('div');
+      div.className = `log-entry ${type}`;
+      div.innerHTML = `<span class="log-time">${timestamp}</span>${String(message).replace(/</g, '&lt;').replace(/>/g, '&gt;')}`;
+      debugLog.appendChild(div);
+      debugLog.scrollTop = debugLog.scrollHeight;
+    }
+
+    // Capture console methods
+    const originalLog = console.log;
+    const originalError = console.error;
+    const originalWarn = console.warn;
+    const originalInfo = console.info;
+
+    console.log = function(...args) {
+      addLog(args.map(a => typeof a === 'object' ? JSON.stringify(a) : a).join(' '), 'log');
+      originalLog.apply(console, args);
+    };
+
+    console.error = function(...args) {
+      addLog(args.map(a => typeof a === 'object' ? JSON.stringify(a) : a).join(' '), 'error');
+      originalError.apply(console, args);
+    };
+
+    console.warn = function(...args) {
+      addLog(args.map(a => typeof a === 'object' ? JSON.stringify(a) : a).join(' '), 'warn');
+      originalWarn.apply(console, args);
+    };
+
+    console.info = function(...args) {
+      addLog(args.map(a => typeof a === 'object' ? JSON.stringify(a) : a).join(' '), 'info');
+      originalInfo.apply(console, args);
+    };
+
+    // Capture errors
+    window.onerror = function(msg, url, lineNo, columnNo, error) {
+      addLog(`ERROR: ${msg} at ${url}:${lineNo}:${columnNo}`, 'error');
+      return false;
+    };
+
+    window.onunhandledrejection = function(event) {
+      addLog(`UNHANDLED PROMISE: ${event.reason}`, 'error');
+    };
+
+    // Copy button
+    copyBtn.addEventListener('click', async () => {
+      const text = logEntries.map(e => `[${e.timestamp}] [${e.type.toUpperCase()}] ${e.message}`).join('\n');
+      try {
+        await navigator.clipboard.writeText(text);
+        copyToast.classList.add('show');
+        setTimeout(() => copyToast.classList.remove('show'), 1500);
+      } catch (err) {
+        // Fallback for iOS
+        const textarea = document.createElement('textarea');
+        textarea.value = text;
+        textarea.style.position = 'fixed';
+        textarea.style.top = '50%';
+        textarea.style.left = '0';
+        textarea.style.width = '100%';
+        textarea.style.height = '200px';
+        textarea.style.zIndex = '9999';
+        textarea.style.fontSize = '12px';
+        document.body.appendChild(textarea);
+        textarea.focus();
+        textarea.select();
+        addLog('Text area opened - select all and copy manually', 'info');
+      }
+    });
+
+    // Clear button
+    clearBtn.addEventListener('click', () => {
+      debugLog.innerHTML = '';
+      logEntries = [];
+      addLog('Console cleared', 'info');
+    });
+
+    console.info('Debug console initialized');
+    console.info('User Agent: ' + navigator.userAgent);
+
+    // ===== MAIN APP =====
+
     // State
     const state = {
       video: null,
@@ -321,6 +540,7 @@
 
     // Extract frames from video
     async function extractFrames() {
+      console.info('Starting frame extraction...');
       state.frames = [];
       const tempCanvas = document.createElement('canvas');
       const tempCtx = tempCanvas.getContext('2d');
@@ -331,37 +551,77 @@
       tempCanvas.width = thumbWidth;
       tempCanvas.height = thumbHeight;
 
-      const totalFrames = Math.ceil(state.duration / state.frameInterval);
+      console.log(`Thumb size: ${thumbWidth}x${thumbHeight}`);
 
-      return new Promise((resolve) => {
+      const totalFrames = Math.ceil(state.duration / state.frameInterval);
+      console.log(`Total frames to extract: ${totalFrames} (duration: ${state.duration}s, interval: ${state.frameInterval}s)`);
+
+      return new Promise((resolve, reject) => {
         let frameIndex = 0;
+        let seekTimeout = null;
+        let lastSeekTime = Date.now();
 
         const extractNext = () => {
           if (frameIndex >= totalFrames) {
+            console.info(`Frame extraction complete! ${state.frames.length} frames extracted`);
             resolve();
             return;
           }
 
           const time = frameIndex * state.frameInterval;
+          console.log(`Seeking to frame ${frameIndex}/${totalFrames} at time ${time.toFixed(3)}s`);
+          lastSeekTime = Date.now();
+
+          // Set a timeout to detect if seeking hangs
+          if (seekTimeout) clearTimeout(seekTimeout);
+          seekTimeout = setTimeout(() => {
+            console.error(`SEEK TIMEOUT! Stuck at frame ${frameIndex}, time ${time.toFixed(3)}s`);
+            console.error(`Video readyState: ${video.readyState}, networkState: ${video.networkState}`);
+            console.error(`Video seeking: ${video.seeking}, paused: ${video.paused}`);
+            // Try to continue anyway
+            frameIndex++;
+            extractNext();
+          }, 5000);
+
           video.currentTime = time;
         };
 
         video.onseeked = () => {
-          tempCtx.drawImage(video, 0, 0, thumbWidth, thumbHeight);
-          state.frames.push({
-            time: frameIndex * state.frameInterval,
-            imageData: tempCanvas.toDataURL('image/jpeg', 0.7)
-          });
-          frameIndex++;
+          if (seekTimeout) clearTimeout(seekTimeout);
+          const seekDuration = Date.now() - lastSeekTime;
 
-          // Show progress
-          const progress = Math.round((frameIndex / totalFrames) * 100);
-          loadOverlay.querySelector('p').textContent = `Extracting frames: ${progress}%`;
+          try {
+            tempCtx.drawImage(video, 0, 0, thumbWidth, thumbHeight);
+            state.frames.push({
+              time: frameIndex * state.frameInterval,
+              imageData: tempCanvas.toDataURL('image/jpeg', 0.7)
+            });
+            frameIndex++;
 
-          // Use setTimeout to prevent blocking
-          setTimeout(extractNext, 0);
+            // Show progress
+            const progress = Math.round((frameIndex / totalFrames) * 100);
+            loadOverlay.querySelector('p').textContent = `Extracting frames: ${progress}%`;
+
+            // Log every 10 frames to avoid spam
+            if (frameIndex % 10 === 0 || frameIndex === 1) {
+              console.log(`Extracted frame ${frameIndex}/${totalFrames} (${progress}%) - seek took ${seekDuration}ms`);
+            }
+
+            // Use setTimeout to prevent blocking
+            setTimeout(extractNext, 0);
+          } catch (err) {
+            console.error(`Error extracting frame ${frameIndex}: ${err.message}`);
+            frameIndex++;
+            setTimeout(extractNext, 0);
+          }
         };
 
+        video.onerror = (e) => {
+          console.error(`Video error: ${video.error ? video.error.message : 'unknown'}`);
+          console.error(`Error code: ${video.error ? video.error.code : 'N/A'}`);
+        };
+
+        console.log('Starting extraction loop...');
         extractNext();
       });
     }
@@ -468,52 +728,91 @@
 
     // Handle video load
     async function loadVideo(file) {
+      console.info(`Loading video: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)`);
+      console.log(`File type: ${file.type}`);
+
       const url = URL.createObjectURL(file);
       video.src = url;
 
       loadOverlay.querySelector('p').textContent = 'Loading video...';
 
-      await new Promise(resolve => {
-        video.onloadedmetadata = resolve;
+      console.log('Waiting for video metadata...');
+      await new Promise((resolve, reject) => {
+        video.onloadedmetadata = () => {
+          console.info('Video metadata loaded');
+          resolve();
+        };
+        video.onerror = () => {
+          console.error('Failed to load video metadata');
+          reject(new Error('Video load failed'));
+        };
+        setTimeout(() => {
+          console.error('Metadata load timeout after 10s');
+          console.log(`Video readyState: ${video.readyState}`);
+        }, 10000);
       });
 
       state.duration = video.duration;
       state.videoWidth = video.videoWidth;
       state.videoHeight = video.videoHeight;
 
+      console.info(`Video info: ${state.videoWidth}x${state.videoHeight}, duration: ${state.duration.toFixed(2)}s`);
+      console.log(`Video readyState: ${video.readyState}`);
+
       // Set up preview canvas
       previewCanvas.width = state.videoWidth;
       previewCanvas.height = state.videoHeight;
+      console.log('Preview canvas configured');
 
       // Adjust time windows
       adjustWindows();
+      console.log(`Time windows: Fine=${stripes[0].window}s, Medium=${stripes[1].window}s, Coarse=${stripes[2].window}s`);
 
       // Set up stripe canvases
-      stripes.forEach(stripe => {
+      stripes.forEach((stripe, i) => {
         stripe.canvas.width = stripe.element.clientWidth * 2; // 2x for retina
         stripe.canvas.height = stripe.element.clientHeight * 2;
         stripe.canvas.style.width = stripe.element.clientWidth + 'px';
         stripe.canvas.style.height = stripe.element.clientHeight + 'px';
         stripe.ctx.scale(2, 2);
       });
+      console.log('Stripe canvases configured');
 
       // Extract frames
-      await extractFrames();
+      console.info('Beginning frame extraction...');
+      try {
+        await extractFrames();
+      } catch (err) {
+        console.error(`Frame extraction failed: ${err.message}`);
+        return;
+      }
 
       // Load frame images
+      console.info(`Loading ${state.frames.length} thumbnail images...`);
       loadOverlay.querySelector('p').textContent = 'Loading thumbnails...';
+      let loadedCount = 0;
       await Promise.all(state.frames.map(frame => {
         return new Promise(resolve => {
           const img = new Image();
           img.onload = () => {
             frame.image = img;
+            loadedCount++;
+            if (loadedCount % 50 === 0) {
+              console.log(`Loaded ${loadedCount}/${state.frames.length} thumbnails`);
+            }
+            resolve();
+          };
+          img.onerror = () => {
+            console.warn(`Failed to load thumbnail for time ${frame.time}`);
             resolve();
           };
           img.src = frame.imageData;
         });
       }));
+      console.info('All thumbnails loaded');
 
       // Initial state
+      console.log('Seeking to start...');
       video.currentTime = 0;
       state.currentTime = 0;
 
@@ -521,11 +820,13 @@
         video.onseeked = resolve;
       });
 
+      console.log('Drawing initial state...');
       drawPreview();
       updateTimeDisplay();
       drawAllStripes();
 
       loadOverlay.classList.add('hidden');
+      console.info('Video editor ready!');
       animate();
     }
 
