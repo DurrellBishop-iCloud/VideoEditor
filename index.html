@@ -47,23 +47,9 @@
       display: none;
     }
 
-    #load-overlay label {
-      padding: 20px 40px;
-      background: #3b82f6;
-      border-radius: 12px;
-      font-size: 18px;
-      font-weight: 600;
-      cursor: pointer;
-    }
-
-    #load-overlay input {
-      display: none;
-    }
-
     #load-overlay p {
-      margin-top: 20px;
       color: #888;
-      font-size: 14px;
+      font-size: 16px;
     }
 
     /* Preview area - top half */
@@ -230,8 +216,8 @@
       pointer-events: none;
     }
 
-    /* Debug Toggle Button */
-    #debug-toggle {
+    /* Control Panel Toggle Button */
+    #control-toggle {
       position: fixed;
       top: 10px;
       right: 10px;
@@ -240,12 +226,73 @@
       background: rgba(0, 0, 0, 0.6);
       border: none;
       border-radius: 50%;
-      z-index: 1001;
+      z-index: 1002;
       cursor: pointer;
       display: flex;
       align-items: center;
       justify-content: center;
       font-size: 20px;
+    }
+
+    /* Control Panel */
+    #control-panel {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      background: rgba(20, 20, 20, 0.98);
+      z-index: 1001;
+      transform: translateY(-100%);
+      transition: transform 0.3s ease-out;
+      padding: 60px 20px 20px 20px;
+      border-bottom: 1px solid #333;
+    }
+
+    #control-panel.visible {
+      transform: translateY(0);
+    }
+
+    .control-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 14px 0;
+      border-bottom: 1px solid #333;
+      color: #fff;
+      font-size: 16px;
+    }
+
+    .control-item:last-child {
+      border-bottom: none;
+    }
+
+    .control-item label {
+      cursor: pointer;
+    }
+
+    .control-item input[type="file"] {
+      display: none;
+    }
+
+    .control-btn {
+      background: #3b82f6;
+      border: none;
+      color: white;
+      padding: 8px 16px;
+      border-radius: 6px;
+      font-size: 14px;
+      cursor: pointer;
+    }
+
+    .control-btn.secondary {
+      background: #4b5563;
+    }
+
+    .control-version {
+      color: #666;
+      font-size: 12px;
+      text-align: center;
+      padding-top: 15px;
     }
 
     /* Debug Console */
@@ -364,10 +411,26 @@
 </head>
 <body>
   <!-- Version -->
-  <div id="version">v1.2</div>
+  <div id="version">v1.3</div>
 
-  <!-- Debug Toggle -->
-  <button id="debug-toggle">&#9881;</button>
+  <!-- Control Panel Toggle -->
+  <button id="control-toggle">&#9881;</button>
+
+  <!-- Control Panel -->
+  <div id="control-panel">
+    <div class="control-item">
+      <span>Load Video</span>
+      <label class="control-btn">
+        Choose File
+        <input type="file" id="file-input" accept="video/*">
+      </label>
+    </div>
+    <div class="control-item">
+      <span>Debug Console</span>
+      <button class="control-btn secondary" id="debug-toggle">Show</button>
+    </div>
+    <div class="control-version">Three Line Edit v1.3</div>
+  </div>
 
   <!-- Debug Console -->
   <div id="debug-console">
@@ -384,11 +447,7 @@
 
   <div id="app">
     <div id="load-overlay">
-      <label>
-        Load Video
-        <input type="file" id="file-input" accept="video/*">
-      </label>
-      <p>Select a video file to begin editing</p>
+      <p>Tap &#9881; to load a video</p>
     </div>
 
     <div id="preview-area">
@@ -414,7 +473,9 @@
   </div>
 
   <script>
-    // ===== DEBUG CONSOLE =====
+    // ===== CONTROL PANEL & DEBUG CONSOLE =====
+    const controlPanel = document.getElementById('control-panel');
+    const controlToggle = document.getElementById('control-toggle');
     const debugConsole = document.getElementById('debug-console');
     const debugToggle = document.getElementById('debug-toggle');
     const debugLog = document.getElementById('debug-log');
@@ -423,9 +484,16 @@
     const copyToast = document.getElementById('copy-toast');
     let logEntries = [];
 
+    // Toggle control panel
+    controlToggle.addEventListener('click', () => {
+      controlPanel.classList.toggle('visible');
+    });
+
     // Toggle debug console
     debugToggle.addEventListener('click', () => {
-      debugConsole.classList.toggle('visible');
+      const isVisible = debugConsole.classList.toggle('visible');
+      debugToggle.textContent = isVisible ? 'Hide' : 'Show';
+      controlPanel.classList.remove('visible');
     });
 
     function getTimestamp() {
@@ -788,6 +856,9 @@
 
     // Handle video load
     async function loadVideo(file) {
+      // Close control panel
+      controlPanel.classList.remove('visible');
+
       console.info(`Loading video: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)`);
       console.log(`File type: ${file.type}`);
 
