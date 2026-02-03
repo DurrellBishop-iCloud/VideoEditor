@@ -1,6 +1,6 @@
 # Three Line Edit - Development Notes
 
-## Current Version: v2.9.7
+## Current Version: v2.9.8
 
 ## Project Overview
 A browser-based video editor with a three-stripe timeline interface. Videos are loaded, frames are extracted, and users can delete/move sections using mark in/out points.
@@ -38,6 +38,13 @@ A browser-based video editor with a three-stripe timeline interface. Videos are 
 | `drawStripe()` | ~line 1356 | Draw timeline stripes |
 
 ## Recent Fixes (This Session)
+
+### v2.9.8 - Edit List Playback Preview
+- Tap blue edit list stripe to play preview of edited sequence
+- Plays through all clips in order at real-time speed
+- Green playback position indicator on stripe
+- Time display shows edit list progress
+- Touch bottom stripes anytime to stop and return to normal editing
 
 ### v2.9.7 - HD Frame Background Extraction
 - **Complete rewrite of HD frame loading**

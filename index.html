@@ -510,7 +510,7 @@
 </head>
 <body>
   <!-- Version -->
-  <div id="version">v2.9.7</div>
+  <div id="version">v2.9.8</div>
 
   <!-- Frame Info Display -->
   <div id="frame-info">Frame: --</div>
@@ -531,7 +531,7 @@
       <span>Debug Console</span>
       <button class="control-btn secondary" id="debug-toggle">Show</button>
     </div>
-    <div class="control-version">Three Line Edit v2.9.7</div>
+    <div class="control-version">Three Line Edit v2.9.8</div>
   </div>
 
   <!-- Debug Console -->
@@ -743,7 +743,10 @@
       hdExtractionComplete: false,
       hdHeight: 240,             // HD frame height (3x thumbnail height of 80)
       lastInteraction: 0,        // Timestamp of last user interaction
-      extractionComplete: false  // Don't start HD extraction until thumbnails done
+      extractionComplete: false, // Don't start HD extraction until thumbnails done
+      // Edit list playback
+      editListPlaying: false,    // true when playing edit list preview
+      editListPlayTime: 0        // Current time in edit list timeline
     };
 
     // Update effective times on all frames and calculate effective duration
@@ -1692,6 +1695,11 @@
         e.preventDefault();
         userInteracted();
 
+        // Stop edit list playback if running
+        if (state.editListPlaying) {
+          stopEditListPlayback();
+        }
+
         const touch = e.touches ? e.touches[0] : e;
         startX = touch.clientX;
         startY = touch.clientY;
@@ -2083,6 +2091,104 @@
       editListStripe.querySelector('.stripe-label').textContent =
         `Edit List (${state.editList.length} clips, ${state.editListDuration.toFixed(1)}s)`;
     }
+
+    // Edit list playback - tap blue stripe to preview the edited sequence
+    function startEditListPlayback() {
+      if (state.editList.length === 0) return;
+      if (state.editListPlaying) {
+        stopEditListPlayback();
+        return;
+      }
+
+      console.info('Starting edit list playback...');
+      state.editListPlaying = true;
+      state.editListPlayTime = 0;
+
+      // Change stripe color to indicate playback mode
+      editListStripe.style.borderColor = '#22c55e'; // Green during playback
+
+      // Start playback loop
+      playEditListFrame();
+    }
+
+    function stopEditListPlayback() {
+      if (!state.editListPlaying) return;
+
+      console.info('Stopping edit list playback');
+      state.editListPlaying = false;
+      state.editListPlayTime = 0;
+
+      // Restore stripe color
+      editListStripe.style.borderColor = '#3b82f6'; // Back to blue
+
+      // Restore normal preview
+      drawPreview();
+      drawEditListStripe();
+    }
+
+    function playEditListFrame() {
+      if (!state.editListPlaying) return;
+
+      // Check if we've reached the end
+      if (state.editListPlayTime >= state.editListDuration) {
+        console.info('Edit list playback complete');
+        stopEditListPlayback();
+        return;
+      }
+
+      // Find which clip and source time this edit time corresponds to
+      let accumulatedTime = 0;
+      let sourceTime = null;
+
+      for (const clip of state.editList) {
+        const clipDuration = clip.outTime - clip.inTime;
+        if (state.editListPlayTime < accumulatedTime + clipDuration) {
+          const offsetInClip = state.editListPlayTime - accumulatedTime;
+          sourceTime = clip.inTime + offsetInClip;
+          break;
+        }
+        accumulatedTime += clipDuration;
+      }
+
+      // Draw the frame in preview
+      if (sourceTime !== null) {
+        const frame = getFrameAtTime(sourceTime);
+        if (frame && frame.image) {
+          previewCtx.fillStyle = '#000';
+          previewCtx.fillRect(0, 0, previewCanvas.width, previewCanvas.height);
+          previewCtx.imageSmoothingEnabled = true;
+          previewCtx.imageSmoothingQuality = 'high';
+          previewCtx.drawImage(frame.image, 0, 0, previewCanvas.width, previewCanvas.height);
+        }
+      }
+
+      // Update time display to show edit list position
+      const progress = (state.editListPlayTime / state.editListDuration * 100).toFixed(0);
+      timeDisplay.textContent = `Edit: ${formatTime(state.editListPlayTime)} / ${formatTime(state.editListDuration)} (${progress}%)`;
+
+      // Draw playback position on edit list stripe
+      drawEditListStripe();
+      const stripeWidth = editListStripe.clientWidth;
+      const posX = (state.editListPlayTime / state.editListDuration) * stripeWidth;
+      editListCtx.strokeStyle = '#22c55e';
+      editListCtx.lineWidth = 3;
+      editListCtx.beginPath();
+      editListCtx.moveTo(posX * 2, 0); // *2 for retina
+      editListCtx.lineTo(posX * 2, editListStripe.clientHeight * 2);
+      editListCtx.stroke();
+
+      // Advance time
+      state.editListPlayTime += state.frameInterval;
+
+      // Schedule next frame (real-time playback)
+      setTimeout(playEditListFrame, state.frameInterval * 1000);
+    }
+
+    // Click handler for edit list stripe
+    editListStripe.addEventListener('click', (e) => {
+      if (state.editList.length === 0) return;
+      startEditListPlayback();
+    });
 
     // Override drawStripe to show markers and deleted regions
     const originalDrawStripe = drawStripe;
