@@ -684,12 +684,12 @@
 
     // Draw a stripe
     function drawStripe(stripe) {
-      const canvas = stripe.canvas;
       const ctx = stripe.ctx;
-      const window = stripe.window;
+      const timeWindow = stripe.window;
 
-      const width = canvas.width;
-      const height = canvas.height;
+      // Use element dimensions (not canvas dimensions which are 2x for retina)
+      const width = stripe.element.clientWidth;
+      const height = stripe.element.clientHeight;
 
       ctx.fillStyle = '#0a0a0a';
       ctx.fillRect(0, 0, width, height);
@@ -697,32 +697,28 @@
       // Calculate frame dimensions
       const frameHeight = height - 4;
       const frameWidth = Math.round((state.videoWidth / state.videoHeight) * frameHeight);
-      const frameSpacing = 2;
-
-      // How many frames fit in the window?
-      const framesInWindow = Math.ceil(width / (frameWidth + frameSpacing)) + 2;
 
       // Time per pixel
-      const timePerPixel = window / width;
+      const timePerPixel = timeWindow / width;
 
-      // Calculate start time (left edge)
-      const startTime = state.currentTime - (window / 2);
-
-      // Draw frames
+      // Center of the stripe = current time
       const centerX = width / 2;
 
-      // Calculate which frames to show
-      const frameTimeStep = window / framesInWindow;
+      // How many frames to show (enough to fill the width plus extra)
+      const framesNeeded = Math.ceil(width / frameWidth) + 4;
 
-      for (let i = -Math.ceil(framesInWindow / 2); i <= Math.ceil(framesInWindow / 2); i++) {
-        const frameTime = state.currentTime + (i * frameTimeStep);
+      // Draw frames centered on current time
+      for (let i = -Math.ceil(framesNeeded / 2); i <= Math.ceil(framesNeeded / 2); i++) {
+        // Calculate time offset for this frame position
+        const pixelOffset = i * frameWidth;
+        const frameTime = state.currentTime + (pixelOffset * timePerPixel);
 
         if (frameTime < 0 || frameTime > state.duration) continue;
 
         const frame = getFrameAtTime(frameTime);
         if (!frame || !frame.image) continue;
 
-        // Position based on time difference from center
+        // Position: center of frame aligns with its time position
         const timeDiff = frameTime - state.currentTime;
         const x = centerX + (timeDiff / timePerPixel) - (frameWidth / 2);
 
