@@ -1,6 +1,6 @@
 # Three Line Edit - Development Notes
 
-## Current Version: v2.9.12
+## Current Version: v2.9.13
 
 ## Project Overview
 A browser-based video editor with a three-stripe timeline interface. Videos are loaded, frames are extracted, and users can delete/move sections using mark in/out points.
