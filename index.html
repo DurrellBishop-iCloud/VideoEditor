@@ -137,6 +137,18 @@
       z-index: 10;
     }
 
+    /* Left panel for IN/OUT/CLR in portrait */
+    #edit-panel-left {
+      position: absolute;
+      left: 10px;
+      top: 50%;
+      transform: translateY(-50%);
+      display: none;
+      flex-direction: column;
+      gap: 6px;
+      z-index: 10;
+    }
+
     .edit-btn {
       width: 50px;
       height: 50px;
@@ -160,6 +172,58 @@
 
     .edit-btn .icon {
       font-size: 18px;
+    }
+
+    /* Portrait mode: simplified layout */
+    @media (orientation: portrait) {
+      #edit-panel {
+        right: 10px;
+        top: 50%;
+        flex-direction: column;
+      }
+
+      #edit-panel-left {
+        display: flex;
+      }
+
+      /* Hide main panel buttons except delete */
+      #edit-panel #btn-mark-in,
+      #edit-panel #btn-mark-out,
+      #edit-panel #btn-clear,
+      #edit-panel #btn-keep,
+      #edit-panel #btn-move {
+        display: none;
+      }
+
+      /* Delete button: large circle, muted red */
+      #edit-panel #btn-delete {
+        width: 70px;
+        height: 70px;
+        border-radius: 50%;
+        background: rgba(120, 60, 60, 0.8) !important;
+        font-size: 13px;
+      }
+
+      #edit-panel #btn-delete .icon {
+        font-size: 28px;
+      }
+
+      /* Left panel buttons: smaller, muted */
+      #edit-panel-left .edit-btn {
+        width: 44px;
+        height: 44px;
+        background: rgba(60, 60, 70, 0.8);
+        border-radius: 8px;
+        font-size: 10px;
+      }
+
+      #edit-panel-left .edit-btn .icon {
+        font-size: 16px;
+      }
+
+      #edit-panel-left .edit-btn.active {
+        background: rgba(80, 100, 140, 0.9);
+      }
     }
 
     #marker-display {
@@ -510,7 +574,7 @@
 </head>
 <body>
   <!-- Version -->
-  <div id="version">v2.9.9</div>
+  <div id="version">v2.9.10</div>
 
   <!-- Frame Info Display -->
   <div id="frame-info">Frame: --</div>
@@ -531,7 +595,7 @@
       <span>Debug Console</span>
       <button class="control-btn secondary" id="debug-toggle">Show</button>
     </div>
-    <div class="control-version">Three Line Edit v2.9.9</div>
+    <div class="control-version">Three Line Edit v2.9.10</div>
   </div>
 
   <!-- Debug Console -->
@@ -559,6 +623,22 @@
       <div id="time-display">00:00.000 / 00:00.000</div>
       <div id="marker-display" style="display:none"></div>
       <div id="hd-progress" style="position:absolute; top:10px; left:10px; background:rgba(0,0,0,0.7); color:#ef4444; padding:4px 8px; border-radius:4px; font-size:12px; font-weight:bold; display:none;">HD: 0%</div>
+      <!-- Left panel for portrait mode -->
+      <div id="edit-panel-left">
+        <button class="edit-btn" id="btn-mark-in-left">
+          <span class="icon">[</span>
+          <span>IN</span>
+        </button>
+        <button class="edit-btn" id="btn-mark-out-left">
+          <span class="icon">]</span>
+          <span>OUT</span>
+        </button>
+        <button class="edit-btn" id="btn-clear-left">
+          <span class="icon">×</span>
+          <span>CLR</span>
+        </button>
+      </div>
+      <!-- Right panel (all buttons in landscape, just delete in portrait) -->
       <div id="edit-panel">
         <button class="edit-btn" id="btn-mark-in">
           <span class="icon">[</span>
@@ -1854,6 +1934,10 @@
     const btnDelete = document.getElementById('btn-delete');
     const btnMove = document.getElementById('btn-move');
     const btnClear = document.getElementById('btn-clear');
+    // Left panel buttons (portrait mode)
+    const btnMarkInLeft = document.getElementById('btn-mark-in-left');
+    const btnMarkOutLeft = document.getElementById('btn-mark-out-left');
+    const btnClearLeft = document.getElementById('btn-clear-left');
     const markerDisplay = document.getElementById('marker-display');
     const editListStripe = document.getElementById('edit-list-stripe');
     const editListCanvas = editListStripe.querySelector('canvas');
@@ -1894,21 +1978,27 @@
         markerDisplay.style.display = 'none';
         btnMarkIn.classList.remove('active');
         btnMarkOut.classList.remove('active');
+        btnMarkInLeft.classList.remove('active');
+        btnMarkOutLeft.classList.remove('active');
       } else {
         markerDisplay.style.display = 'block';
         let text = '';
         if (state.markIn !== null) {
           text += `IN: ${formatTime(state.markIn)}`;
           btnMarkIn.classList.add('active');
+          btnMarkInLeft.classList.add('active');
         } else {
           btnMarkIn.classList.remove('active');
+          btnMarkInLeft.classList.remove('active');
         }
         if (state.markOut !== null) {
           if (text) text += ' | ';
           text += `OUT: ${formatTime(state.markOut)}`;
           btnMarkOut.classList.add('active');
+          btnMarkOutLeft.classList.add('active');
         } else {
           btnMarkOut.classList.remove('active');
+          btnMarkOutLeft.classList.remove('active');
         }
         if (state.markIn !== null && state.markOut !== null) {
           const duration = Math.abs(state.markOut - state.markIn);
@@ -1945,6 +2035,36 @@
 
     // Clear markers button
     btnClear.addEventListener('click', () => {
+      state.markIn = null;
+      state.markOut = null;
+      console.info('Markers cleared');
+      updateMarkerDisplay();
+    });
+
+    // Left panel buttons (portrait mode) - same actions as right panel
+    btnMarkInLeft.addEventListener('click', () => {
+      const sourceTime = effectiveToSource(state.currentTime);
+      const frame = getFrameAtTime(sourceTime);
+      state.markIn = frame ? frame.time : sourceTime;
+      if (state.markOut !== null && state.markOut < state.markIn) {
+        [state.markIn, state.markOut] = [state.markOut, state.markIn];
+      }
+      console.info(`Mark IN set: ${formatTime(state.markIn)} (frame time)`);
+      updateMarkerDisplay();
+    });
+
+    btnMarkOutLeft.addEventListener('click', () => {
+      const sourceTime = effectiveToSource(state.currentTime);
+      const frame = getFrameAtTime(sourceTime);
+      state.markOut = frame ? frame.time : sourceTime;
+      if (state.markIn !== null && state.markIn > state.markOut) {
+        [state.markIn, state.markOut] = [state.markOut, state.markIn];
+      }
+      console.info(`Mark OUT set: ${formatTime(state.markOut)} (frame time)`);
+      updateMarkerDisplay();
+    });
+
+    btnClearLeft.addEventListener('click', () => {
       state.markIn = null;
       state.markOut = null;
       console.info('Markers cleared');

@@ -1,6 +1,6 @@
 # Three Line Edit - Development Notes
 
-## Current Version: v2.9.9
+## Current Version: v2.9.10
 
 ## Project Overview
 A browser-based video editor with a three-stripe timeline interface. Videos are loaded, frames are extracted, and users can delete/move sections using mark in/out points.
@@ -38,6 +38,12 @@ A browser-based video editor with a three-stripe timeline interface. Videos are 
 | `drawStripe()` | ~line 1356 | Draw timeline stripes |
 
 ## Recent Fixes (This Session)
+
+### v2.9.10 - Portrait Mode Button Layout
+- Portrait: IN, OUT, CLR buttons on left side (smaller, muted gray)
+- Portrait: DELETE only on right side (large circle, muted red)
+- KEEP and MOVE hidden in portrait mode
+- Landscape: unchanged (all buttons on right)
 
 ### v2.9.9 - Edit List Stripe Compression
 - Edit list frames now compress to always fit on screen
